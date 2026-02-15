@@ -1,7 +1,7 @@
 %code requires {
-  #include <memory>
-  #include <string>
-  #include "parser.hpp"
+#include <memory>
+#include <string>
+#include "parser.hpp"
 }
 
 %{
