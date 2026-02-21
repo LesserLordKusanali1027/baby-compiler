@@ -1,4 +1,5 @@
 #include <iostream>
+#include <memory>
 #ifndef PARSER_HPP
 #define PARSER_HPP
 
@@ -10,7 +11,7 @@ public:
     virtual void Dump() const = 0;
 };
 
-// CompUnit 是 BaseAST
+// 非终结符的类均从基类继承
 // CompUnit  ::= FuncDef;
 class CompUnitAST : public BaseAST {
 public:
@@ -24,7 +25,6 @@ public:
     }
 };
 
-// FuncDef 也是 BaseAST
 // FuncDef   ::= FuncType IDENT "(" ")" Block;
 class FuncDefAST : public BaseAST {
 public:
@@ -41,7 +41,6 @@ public:
     }
 };
 
-// 我直接硬翻译
 // FuncType  ::= "int";
 class FuncTypeAST : public BaseAST {
 public:
