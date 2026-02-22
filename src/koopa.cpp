@@ -1,4 +1,4 @@
-#include "IR_generator.hpp"
+#include "koopa.hpp"
 #include "parser.hpp"
 #include <vector>
 
@@ -21,7 +21,7 @@ FunctionIR* Generate_Function(FuncDefAST* func_def) {
 
     auto function_ir = new FunctionIR();
     std::string str1 = "i32";
-    std::string str2 = "@" + func_def->ident;
+    std::string str2 = func_def->ident;
     function_ir -> name = str2;
     function_ir -> function_type = str1;
     

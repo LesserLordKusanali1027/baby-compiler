@@ -1,5 +1,5 @@
-#ifndef IR_GENERATOR_HPP
-#define IR_GENERATOR_HPP
+#ifndef KOOPA_HPP
+#define KOOPA_HPP
 
 #include "parser.hpp"
 #include <vector>
@@ -47,14 +47,14 @@ public:
     std::string function_type;
     std::vector<BaseIR*> basic_block;
     void Dump() const override {
-        std::cout << "fun " << name << "(): " << function_type << " {\n";
+        std::cout << "fun @" << name << "(): " << function_type << " {\n";
         for (int i = 0; i < basic_block.size(); i++)
             basic_block[i] -> Dump();
         std::cout << "}";
     }
 
     void Dump_file(std::ofstream& file) override {
-        file << "fun " << name << "(): " << function_type << " {\n";
+        file << "fun @" << name << "(): " << function_type << " {\n";
         for (int i = 0; i < basic_block.size(); i++)
             basic_block[i] -> Dump_file(file);
         file << "}";

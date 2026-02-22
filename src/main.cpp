@@ -4,9 +4,11 @@
 #include <memory>
 #include <string>
 #include <fstream>
+#include <string.h>
 
 #include "parser.hpp"
-#include "IR_generator.hpp"
+#include "koopa.hpp"
+#include "riscv.hpp"
 
 using namespace std;
 
@@ -39,21 +41,26 @@ int main(int argc, const char *argv[]) {
     ast -> Dump();
     cout << endl;
 
+    // 由 AST 生成 Koopa IR
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
-    ProgramIR* koopa_ir = NULL;
+    ProgramIR* program_ir = NULL;
     if (fd) {
-        koopa_ir = Generate_Program(fd);
+        program_ir = Generate_Program(fd);
     }
 
-    std::ofstream ast_out(output);
-
-    if (ast_out.is_open()) {
-        koopa_ir -> Dump_file(ast_out);
-        ast_out.close();
+    std::ofstream out_file(output);
+    if (out_file.is_open()) {
+        if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
+            program_ir -> Dump_file(out_file);
+            // program_ir -> Dump();
+            // cout << endl;
+        }
+        else if (strcmp(mode, "-riscv") == 0) { // 输出 RISC-V 代码
+            // Riscv(program_ir);
+            Riscv_file(program_ir, out_file);
+        }
+        out_file.close();
     }
-    
-    // koopa_ir -> Dump();
-    // cout << endl;
 
     return 0;
 }
