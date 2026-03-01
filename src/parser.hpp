@@ -99,14 +99,14 @@ class StmtAST : public BaseAST {
     }
 };
 
-// Exp         ::= UnaryExp;
+// Exp         ::= AddExp;
 class ExpAST : public BaseAST {
   public:
-    std::unique_ptr<BaseAST> unaryexp;
+    std::unique_ptr<BaseAST> addexp;
 
     void Dump() const override {
         std::cout << "ExpAST { ";
-        unaryexp -> Dump();
+        addexp -> Dump();
         std::cout << " }";
     }
 
@@ -200,6 +200,74 @@ class UnaryOpAST : public BaseAST {
 
     void Dump() const override{
         std::cout << ch;
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+
+// MulExp      ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
+class MulExpAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> unaryexp;
+
+    void Dump() const override {
+        std::cout << "MulExpAST { ";
+        unaryexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+class MulExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> mulexp;
+    char ch;
+    std::unique_ptr<BaseAST> unaryexp;
+
+    void Dump() const override {
+        std::cout << "MulExpAST { ";
+        mulexp -> Dump();
+        std::cout << ", " << ch << ", ";
+        unaryexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+
+// AddExp      ::= MulExp | AddExp ("+" | "-") MulExp;
+class AddExpAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> mulexp;
+
+    void Dump() const override {
+        std::cout << "AddExpAST { ";
+        mulexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+class AddExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> addexp;
+    char ch;
+    std::unique_ptr<BaseAST> mulexp;
+
+    void Dump() const override {
+        std::cout << "AddExpAST { ";
+        addexp -> Dump();
+        std::cout << ", " << ch << ", ";
+        mulexp -> Dump();
+        std::cout << " }";
     }
 
     void accept(Visitor_ast& visitor) override {

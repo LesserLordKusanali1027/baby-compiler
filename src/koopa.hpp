@@ -4,6 +4,7 @@
 # include <vector>
 # include <iostream>
 # include <fstream>
+# include <stack>
 # include "riscv.hpp"
 
 class BaseAST;
@@ -19,6 +20,11 @@ class NumberAST;
 class UnaryExpAST_1;
 class UnaryExpAST_2;
 class UnaryOpAST;
+// 算术表达式
+class MulExpAST_1;
+class MulExpAST_2;
+class AddExpAST_1;
+class AddExpAST_2;
 
 // 定义数据结构
 // 所有 IR 的基类
@@ -150,11 +156,13 @@ class ValueIR_2 : public BaseIR {
 // FuncType    ::= "int";
 // Block       ::= "{" Stmt "}";
 // Stmt        ::= "return" Exp ";";
-// Exp         ::= UnaryExp;
+// Exp         ::= AddExp;
 // PrimaryExp  ::= "(" Exp ")" | Number;
 // Number      ::= INT_CONST;
 // UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
 // UnaryOp     ::= "+" | "-" | "!";
+// MulExp      ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
+// AddExp      ::= MulExp | AddExp ("+" | "-") MulExp;
 // 定义 visitor 模式
 class Visitor_ast {
   public:
@@ -166,9 +174,11 @@ class Visitor_ast {
     BasicBlockIR* basic_block;
 
     // ir_init 返回值要统一，这里用来记录返回值
-    int tmp_symbol = -1;  // 临时符号，这种写法可能埋了个雷：基本块不能太长，否则 int 溢出
-    int integer;
+    int tmp_symbol = 0;  // 临时符号，这种写法可能埋了个雷：基本块不能太长，否则 int 溢出
+    // int integer; 暂时用不到
     char ch;
+    // 算术表达式添加：需要一个栈来存放数值和临时符号
+    std::stack<std::string> stk;
     
   public:
     void ir_init(CompUnitAST& comp_unit);
@@ -183,6 +193,11 @@ class Visitor_ast {
     void ir_init(UnaryExpAST_1& unary_exp);
     void ir_init(UnaryExpAST_2& unary_exp);
     void ir_init(UnaryOpAST& unary_op);
+    
+    void ir_init(MulExpAST_1& mul_exp);
+    void ir_init(MulExpAST_2& mul_exp);
+    void ir_init(AddExpAST_1& add_exp);
+    void ir_init(AddExpAST_2& add_exp);
 
     void Dump() {
         program -> Dump();

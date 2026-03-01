@@ -28,14 +28,10 @@ void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
 void Visitor_ir::riscv_get(ValueIR_1& value) {
     if (value.opcode == "ret") {
         if (value.operand[0] == '%') {
-            // std::cout << "  mv    a0, " << register_name[current_register-1] << '\n';
-            // std::cout << "  ret\n";
-            file << "  mv    a0, " << register_name[current_register-1] << '\n';
+            file << "  mv    a0, " << register_name[symbol_register[value.operand]] << '\n';
             file << "  ret\n";
         }
         else {
-            // std::cout << "  li    a0, " << value.operand << '\n';
-            // std::cout << "  ret\n";
             file << "  li    a0, " << value.operand << '\n';
             file << "  ret\n";
         }
@@ -44,40 +40,150 @@ void Visitor_ir::riscv_get(ValueIR_1& value) {
 
 // 最复杂的一个
 void Visitor_ir::riscv_get(ValueIR_2& value) {
+    // 对于 sub ，先不管三七二十一全都存到新寄存器里
     if (value.opcode == "sub") {
-        if (value.operand1 == "0") {
-            if (value.operand2[0] == '%') {
-                // std::cout << "  sub   " << register_name[current_register] << ", x0, " << register_name[current_register-1] << '\n';
-                file << "  sub   " << register_name[current_register] << ", x0, " << register_name[current_register-1] << '\n';
-                current_register++;
-            }
-            else {
-                // std::cout << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
-                file << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
-                current_register++;
-                // std::cout << "  sub   " << register_name[current_register] << ", x0, " << register_name[current_register-1] << '\n';
-                file << "  sub   " << register_name[current_register] << ", x0, " << register_name[current_register-1] << '\n';
-                current_register++;
-            }
+        if (!symbol_register.count(value.operand1)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
+            symbol_register[value.operand1] = current_register;
+            current_register++;
         }
+        if (!symbol_register.count(value.operand2)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
+            symbol_register[value.operand2] = current_register;
+            current_register++;
+        }
+
+        file << "  sub   " << register_name[current_register] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+        symbol_register[value.target] = current_register;
+        current_register++;
     }
     else if (value.opcode == "eq") {
-        if (value.operand2 == "0") {
-            if (value.operand1[0] == '%') {
-                // std::cout << "  xor   " << register_name[current_register-1] << ", " << register_name[current_register-1] << ", x0\n";
-                // std::cout << "  seqz  " << register_name[current_register-1] << ", " << register_name[current_register-1] << '\n';
-                file << "  xor   " << register_name[current_register-1] << ", " << register_name[current_register-1] << ", x0\n";
-                file << "  seqz  " << register_name[current_register-1] << ", " << register_name[current_register-1] << '\n';
-            }
-            else {
-                // std::cout << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
-                file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
-                current_register++;
-                // std::cout << "  xor   " << register_name[current_register-1] << ", " << register_name[current_register-1] << ", x0\n";
-                // std::cout << "  seqz  " << register_name[current_register-1] << ", " << register_name[current_register-1] << '\n';
-                file << "  xor   " << register_name[current_register-1] << ", " << register_name[current_register-1] << ", x0\n";
-                file << "  seqz  " << register_name[current_register-1] << ", " << register_name[current_register-1] << '\n';
-            }
+        if (!symbol_register.count(value.operand1)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
+            symbol_register[value.operand1] = current_register;
+            current_register++;
         }
+        // 目前这里第二个参数一定是 0
+
+        file << "  xor   " << register_name[current_register] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+        file << "  seqz  " << register_name[current_register] << ", " << register_name[current_register] << '\n';
+        symbol_register[value.target] = current_register;
+        current_register++;
+    }
+    else if (value.opcode == "add") {
+        // 目前看来，不存在一个临时符号被多次使用的情况，所以前面的寄存器也不用保留，默认覆盖排在后面的寄存器
+        if (!symbol_register.count(value.operand1)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
+            symbol_register[value.operand1] = current_register;
+            current_register++;
+        }
+        if (!symbol_register.count(value.operand2)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
+            symbol_register[value.operand2] = current_register;
+            current_register++;
+        }
+
+        if (symbol_register[value.operand1] < symbol_register[value.operand2]) {
+            file << "  add   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        else {
+            file << "  add   " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand1];
+            symbol_register.erase(value.operand1);
+        }
+    }
+    else if (value.opcode == "mul") {
+        if (!symbol_register.count(value.operand1)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
+            symbol_register[value.operand1] = current_register;
+            current_register++;
+        }
+        if (!symbol_register.count(value.operand2)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
+            symbol_register[value.operand2] = current_register;
+            current_register++;
+        }
+
+        if (symbol_register[value.operand1] < symbol_register[value.operand2]) {
+            file << "  mul   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        else if (symbol_register[value.operand1] > symbol_register[value.operand2]) {
+            file << "  mul   " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand1];
+            symbol_register.erase(value.operand1);
+        }
+        else if (symbol_register[value.operand1] != 0) {
+            file << "  mul   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        else {
+            file << "  mul   " << register_name[current_register] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = current_register;
+            current_register++;
+        }
+    }
+    // 注意除法和取模都是不可交换顺序的运算
+    else if (value.opcode == "div") {
+        if (!symbol_register.count(value.operand1)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
+            symbol_register[value.operand1] = current_register;
+            current_register++;
+        }
+        if (!symbol_register.count(value.operand2)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
+            symbol_register[value.operand2] = current_register;
+            current_register++;
+        }
+
+        if (symbol_register[value.operand1] < symbol_register[value.operand2]) {
+            file << "  div   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        else if (symbol_register[value.operand1] > symbol_register[value.operand2]) {
+            file << "  div   " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand1];
+            symbol_register.erase(value.operand1);
+        }
+        else if (symbol_register[value.operand1] != 0) {
+            file << "  div   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        // 先认为不会出现 0/0
+    }
+    else if (value.opcode == "mod") {
+        if (!symbol_register.count(value.operand1)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand1 << '\n';
+            symbol_register[value.operand1] = current_register;
+            current_register++;
+        }
+        if (!symbol_register.count(value.operand2)) {
+            file << "  li    " << register_name[current_register] << ", " << value.operand2 << '\n';
+            symbol_register[value.operand2] = current_register;
+            current_register++;
+        }
+
+        if (symbol_register[value.operand1] < symbol_register[value.operand2]) {
+            file << "  rem   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        else if (symbol_register[value.operand1] > symbol_register[value.operand2]) {
+            file << "  rem   " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand1];
+            symbol_register.erase(value.operand1);
+        }
+        else if (symbol_register[value.operand1] != 0) {
+            file << "  rem   " << register_name[symbol_register[value.operand2]] << ", " << register_name[symbol_register[value.operand1]] << ", " << register_name[symbol_register[value.operand2]] << '\n';
+            symbol_register[value.target] = symbol_register[value.operand2];
+            symbol_register.erase(value.operand2);
+        }
+        // 先认为不会出现 0%0
     }
 }

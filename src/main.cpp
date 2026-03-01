@@ -38,8 +38,8 @@ int main(int argc, const char *argv[]) {
     assert(!ret);
 
     // dump AST
-    // ast -> Dump();
-    // cout << endl;
+    ast -> Dump();
+    cout << endl;
 
     // 由 AST 生成 Koopa IR
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
