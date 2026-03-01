@@ -1,14 +1,14 @@
-#include <cassert>
-#include <cstdio>
-#include <iostream>
-#include <memory>
-#include <string>
-#include <fstream>
-#include <string.h>
+# include <cassert>
+# include <cstdio>
+# include <iostream>
+# include <memory>
+# include <string>
+# include <fstream>
+# include <string.h>
 
-#include "parser.hpp"
-#include "koopa.hpp"
-//#include "riscv.hpp"
+# include "parser.hpp"
+# include "koopa.hpp"
+# include "riscv.hpp"
 
 using namespace std;
 
@@ -38,8 +38,8 @@ int main(int argc, const char *argv[]) {
     assert(!ret);
 
     // dump AST
-    ast -> Dump();
-    cout << endl;
+    // ast -> Dump();
+    // cout << endl;
 
     // 由 AST 生成 Koopa IR
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
@@ -47,18 +47,20 @@ int main(int argc, const char *argv[]) {
 
     fd -> accept(visitor_ast);
 
-    std::ofstream out_file(output);
-    if (out_file.is_open()) {
-        if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
+    if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
+        ofstream out_file(output);
+        if (out_file.is_open()) {
             visitor_ast.Dump_file(out_file);
             visitor_ast.Dump();
             // cout << endl;
+            out_file.close();
         }
-        // else if (strcmp(mode, "-riscv") == 0) { // 输出 RISC-V 代码
-        //     // Riscv(program_ir);
-        //     Riscv_file(program_ir, out_file);
-        // }
-        out_file.close();
+        else
+            cout << "Fail to open file" << output << endl;
+    }
+    else if (strcmp(mode, "-riscv") == 0) { // 输出 RISC-V 代码
+        Visitor_ir visitor_ir(output);
+        visitor_ast.program -> accept(visitor_ir);
     }
 
     return 0;

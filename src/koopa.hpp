@@ -4,6 +4,7 @@
 # include <vector>
 # include <iostream>
 # include <fstream>
+# include "riscv.hpp"
 
 class BaseAST;
 class CompUnitAST;
@@ -28,6 +29,8 @@ public:
     virtual void Dump() const = 0;
 
     virtual void Dump_file(std::ofstream& file) = 0;
+
+    virtual void accept(Visitor_ir& visitor){};
 };
 
 // ProgramIR 类
@@ -48,6 +51,10 @@ public:
             globals[i] -> Dump_file(file);
         for (int i = 0; i < functions.size(); i++)
             functions[i] -> Dump_file(file);
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
     }
 };
 
@@ -70,6 +77,10 @@ public:
             basic_blocks[i] -> Dump_file(file);
         file << "}";
     }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
 };
 
 class BasicBlockIR : public BaseIR {
@@ -88,6 +99,10 @@ public:
         for (int i = 0; i < values.size(); i++)
             values[i] -> Dump_file(file);
     }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
 };
 
 class ValueIR_1 : public BaseIR {
@@ -101,6 +116,10 @@ public:
 
     void Dump_file(std::ofstream& file) override {
         file << "  " << opcode << " " << operand << "\n";
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
     }
 };
 
@@ -120,6 +139,10 @@ class ValueIR_2 : public BaseIR {
         file << "  " << target << " = " << opcode << " ";
         file << operand1 << ", " << operand2 << "\n";
     }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
 };
 
 // CompUnit    ::= FuncDef;
@@ -134,10 +157,11 @@ class ValueIR_2 : public BaseIR {
 // UnaryOp     ::= "+" | "-" | "!";
 // 定义 visitor 模式
 class Visitor_ast {
-  private:
+  public:
     // 最后会将 program 指向构建的 Koopa IR
     // 因为 ir_init 参数要统一，这里用来传参
     ProgramIR* program;
+  private:
     FunctionIR* function;
     BasicBlockIR* basic_block;
 

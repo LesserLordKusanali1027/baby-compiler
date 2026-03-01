@@ -1,23 +1,36 @@
 #ifndef RISCV_HPP
 #define RISCV_HPP
 
-# include "koopa.hpp"
 # include <fstream>
+# include <string>
 
-void Riscv(const ProgramIR* program_ir);
+class ProgramIR;
+class FunctionIR;
+class BasicBlockIR;
+class ValueIR_1;
+class ValueIR_2;
 
-void Riscv(const FunctionIR* function_ir);
+class Visitor_ir {
+  private:
+    std::string register_name[15] = {"t0","t1","t2","t3","t4","t5","t6","a0","a2","a3","a4","a5","a6","a7"};
+    int current_register = 0; // 最靠前的空闲寄存器
+    // bool if_used[15] = {false};
+    std::ofstream file;
+  public:
+    Visitor_ir(const char* output) {
+        file.open(output);
+        if (!file.is_open())
+            std::cout << "Failed to open file " << output << std::endl;
+    }
+    ~Visitor_ir() {
+        file.close();
+    }
 
-void Riscv(const BasicBlockIR* basic_block_ir);
-
-void Riscv(const ValueIR* value_ir);
-
-void Riscv_file(const ProgramIR* program_ir, std::ofstream& file);
-
-void Riscv_file(const FunctionIR* function_ir, std::ofstream& file);
-
-void Riscv_file(const BasicBlockIR* basic_block_ir, std::ofstream& file);
-
-void Riscv_file(const ValueIR* value_ir, std::ofstream& file);
+    void riscv_get(ProgramIR& program);
+    void riscv_get(FunctionIR& function);
+    void riscv_get(BasicBlockIR& basic_block);
+    void riscv_get(ValueIR_1& value);
+    void riscv_get(ValueIR_2& value);
+};
 
 #endif

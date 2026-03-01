@@ -30,7 +30,6 @@ class CompUnitAST : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
-        return;
     }
 };
 
