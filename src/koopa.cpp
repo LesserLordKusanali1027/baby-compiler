@@ -46,7 +46,7 @@ void Visitor_ast::ir_init(StmtAST& stmt) {
 }
 
 void Visitor_ast::ir_init(ExpAST& exp) {
-    exp.addexp.get() -> accept(*this);
+    exp.lorexp.get() -> accept(*this);
     return;
 }
 
@@ -196,3 +196,150 @@ void Visitor_ast::ir_init(AddExpAST_2& add_exp) {
     (this->basic_block -> values).push_back(value);
     return;
 }
+
+void Visitor_ast::ir_init(RelExpAST_1& rel_exp) {
+    rel_exp.addexp.get() -> accept(*this);
+    return;
+}
+// 均采用右序遍历，实际上左右好像都可以
+void Visitor_ast::ir_init(RelExpAST_2& rel_exp) {
+    rel_exp.addexp.get() -> accept(*this);
+    rel_exp.relexp.get() -> accept(*this);
+    
+    ValueIR_2* value = new ValueIR_2();
+    if (rel_exp.cmp_str == ">")
+        value -> opcode = "gt";
+    else if (rel_exp.cmp_str == "<")
+        value -> opcode = "lt";
+    else if (rel_exp.cmp_str == ">=")
+        value -> opcode = "ge";
+    else if (rel_exp.cmp_str == "<=")
+        value -> opcode = "le";
+
+    value -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value -> operand2 = (this->stk).top();
+    (this->stk).pop();
+    value -> target = "%" + std::to_string(this->tmp_symbol);
+
+    (this->stk).push(value -> target);
+    this->tmp_symbol++;
+
+    (this->basic_block -> values).push_back(value);
+    return;
+}
+
+void Visitor_ast::ir_init(EqExpAST_1& eq_exp) {
+    eq_exp.relexp.get() -> accept(*this);
+    return;
+}
+
+void Visitor_ast::ir_init(EqExpAST_2& eq_exp) {
+    eq_exp.relexp.get() -> accept(*this);
+    eq_exp.eqexp.get() -> accept(*this);
+
+    ValueIR_2* value = new ValueIR_2();
+    if (eq_exp.cmp_str == "==")
+        value -> opcode = "eq";
+    else if (eq_exp.cmp_str == "!=")
+        value -> opcode = "ne";
+
+    value -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value -> operand2 = (this->stk).top();
+    (this->stk).pop();
+    value -> target = "%" + std::to_string(this->tmp_symbol);
+
+    (this->stk).push(value -> target);
+    this->tmp_symbol++;
+
+    (this->basic_block -> values).push_back(value);
+    return;
+}
+
+void Visitor_ast::ir_init(LAndExpAST_1& l_and_exp) {
+    l_and_exp.eqexp.get() -> accept(*this);
+    return;
+}
+
+void Visitor_ast::ir_init(LAndExpAST_2& l_and_exp) {
+    l_and_exp.eqexp.get() -> accept(*this);
+    l_and_exp.landexp.get() -> accept(*this);
+
+    // 第一个 ne 指令
+    ValueIR_2* value1 = new ValueIR_2();
+    value1 -> opcode = "ne";
+    value1 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value1 -> operand2 = "0";
+    value1 -> target = "%" + std::to_string(this->tmp_symbol);
+    this->tmp_symbol++;
+    (this->basic_block -> values).push_back(value1);
+
+    // 第二个 ne 指令
+    ValueIR_2* value2 = new ValueIR_2();
+    value2 -> opcode = "ne";
+    value2 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value2 -> operand2 = "0";
+    value2 -> target = "%" + std::to_string(this->tmp_symbol);
+    this->tmp_symbol++;
+    (this->basic_block -> values).push_back(value2);
+
+    // 最后才是按位 and 指令
+    ValueIR_2* value3 = new ValueIR_2();
+    value3 -> opcode = "and";
+    value3 -> operand1 = value1 -> target;
+    value3 -> operand2 = value2 -> target;
+    value3 -> target = "%" + std::to_string(this->tmp_symbol);
+
+    (this->stk).push(value3 -> target);
+    this->tmp_symbol++;
+
+    (this->basic_block -> values).push_back(value3);
+    return;
+}
+
+void Visitor_ast::ir_init(LOrExpAST_1& l_or_exp) {
+    l_or_exp.landexp.get() -> accept(*this);
+    return;
+}
+
+void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
+    l_or_exp.landexp.get() -> accept(*this);
+    l_or_exp.lorexp.get() -> accept(*this);
+
+    // 第一个 ne 指令
+    ValueIR_2* value1 = new ValueIR_2();
+    value1 -> opcode = "ne";
+    value1 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value1 -> operand2 = "0";
+    value1 -> target = "%" + std::to_string(this->tmp_symbol);
+    this->tmp_symbol++;
+    (this->basic_block -> values).push_back(value1);
+
+    // 第二个 ne 指令
+    ValueIR_2* value2 = new ValueIR_2();
+    value2 -> opcode = "ne";
+    value2 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value2 -> operand2 = "0";
+    value2 -> target = "%" + std::to_string(this->tmp_symbol);
+    this->tmp_symbol++;
+    (this->basic_block -> values).push_back(value2);
+
+    // 最后才是按位 or 指令
+    ValueIR_2* value3 = new ValueIR_2();
+    value3 -> opcode = "or";
+    value3 -> operand1 = value1 -> target;
+    value3 -> operand2 = value2 -> target;
+    value3 -> target = "%" + std::to_string(this->tmp_symbol);
+
+    (this->stk).push(value3 -> target);
+    this->tmp_symbol++;
+
+    (this->basic_block -> values).push_back(value3);
+    return;
+}
+

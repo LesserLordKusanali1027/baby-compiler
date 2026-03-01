@@ -99,14 +99,14 @@ class StmtAST : public BaseAST {
     }
 };
 
-// Exp         ::= AddExp;
+// Exp         ::= LOrExp;
 class ExpAST : public BaseAST {
   public:
-    std::unique_ptr<BaseAST> addexp;
+    std::unique_ptr<BaseAST> lorexp;
 
     void Dump() const override {
         std::cout << "ExpAST { ";
-        addexp -> Dump();
+        lorexp -> Dump();
         std::cout << " }";
     }
 
@@ -267,6 +267,142 @@ class AddExpAST_2 : public BaseAST {
         addexp -> Dump();
         std::cout << ", " << ch << ", ";
         mulexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+
+// RelExp      ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
+class RelExpAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> addexp;
+
+    void Dump() const override {
+        std::cout << "RelExpAST { ";
+        addexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+class RelExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> relexp;
+    std::string cmp_str;
+    std::unique_ptr<BaseAST> addexp;
+
+    void Dump() const override {
+        std::cout << "RelExpAST { ";
+        relexp -> Dump();
+        std::cout << ", " << cmp_str << ", ";
+        addexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+
+// EqExp       ::= RelExp | EqExp ("==" | "!=") RelExp;
+class EqExpAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> relexp;
+
+    void Dump() const override {
+        std::cout << "EqExpAST { ";
+        relexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+class EqExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> eqexp;
+    std::string cmp_str;
+    std::unique_ptr<BaseAST> relexp;
+
+    void Dump() const override {
+        std::cout << "EqExpAST { ";
+        eqexp -> Dump();
+        std::cout << ", " << cmp_str << ", ";
+        relexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+
+// LAndExp     ::= EqExp | LAndExp "&&" EqExp;
+class LAndExpAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> eqexp;
+
+    void Dump() const override {
+        std::cout << "LAndExpAST { ";
+        eqexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+class LAndExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> landexp;
+    std::string cmp_str;
+    std::unique_ptr<BaseAST> eqexp;
+
+    void Dump() const override {
+        std::cout << "LAndExpAST { ";
+        landexp -> Dump();
+        std::cout << ", " << cmp_str << ", ";
+        eqexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+
+// LOrExp      ::= LAndExp | LOrExp "||" LAndExp;
+class LOrExpAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> landexp;
+
+    void Dump() const override {
+        std::cout << "LOrExpAST { ";
+        landexp -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+};
+class LOrExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> lorexp;
+    std::string cmp_str;
+    std::unique_ptr<BaseAST> landexp;
+
+    void Dump() const override {
+        std::cout << "LOrExpAST { ";
+        lorexp -> Dump();
+        std::cout << ", " << cmp_str << ", ";
+        landexp -> Dump();
         std::cout << " }";
     }
 

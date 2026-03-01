@@ -25,6 +25,15 @@ class MulExpAST_1;
 class MulExpAST_2;
 class AddExpAST_1;
 class AddExpAST_2;
+// 比较和逻辑表达式
+class RelExpAST_1;
+class RelExpAST_2;
+class EqExpAST_1;
+class EqExpAST_2;
+class LAndExpAST_1;
+class LAndExpAST_2;
+class LOrExpAST_1;
+class LOrExpAST_2;
 
 // 定义数据结构
 // 所有 IR 的基类
@@ -156,13 +165,19 @@ class ValueIR_2 : public BaseIR {
 // FuncType    ::= "int";
 // Block       ::= "{" Stmt "}";
 // Stmt        ::= "return" Exp ";";
-// Exp         ::= AddExp;
+// Exp         ::= LOrExp;
 // PrimaryExp  ::= "(" Exp ")" | Number;
 // Number      ::= INT_CONST;
 // UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
 // UnaryOp     ::= "+" | "-" | "!";
+
 // MulExp      ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
 // AddExp      ::= MulExp | AddExp ("+" | "-") MulExp;
+
+// RelExp      ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
+// EqExp       ::= RelExp | EqExp ("==" | "!=") RelExp;
+// LAndExp     ::= EqExp | LAndExp "&&" EqExp;
+// LOrExp      ::= LAndExp | LOrExp "||" LAndExp;
 // 定义 visitor 模式
 class Visitor_ast {
   public:
@@ -198,6 +213,15 @@ class Visitor_ast {
     void ir_init(MulExpAST_2& mul_exp);
     void ir_init(AddExpAST_1& add_exp);
     void ir_init(AddExpAST_2& add_exp);
+
+    void ir_init(RelExpAST_1& rel_exp);
+    void ir_init(RelExpAST_2& rel_exp);
+    void ir_init(EqExpAST_1& eq_exp);
+    void ir_init(EqExpAST_2& eq_exp);
+    void ir_init(LAndExpAST_1& l_and_exp);
+    void ir_init(LAndExpAST_2& l_and_exp);
+    void ir_init(LOrExpAST_1& l_or_exp);
+    void ir_init(LOrExpAST_2& l_or_exp);
 
     void Dump() {
         program -> Dump();
