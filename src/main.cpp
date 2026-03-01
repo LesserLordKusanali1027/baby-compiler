@@ -8,7 +8,7 @@
 
 #include "parser.hpp"
 #include "koopa.hpp"
-#include "riscv.hpp"
+//#include "riscv.hpp"
 
 using namespace std;
 
@@ -43,22 +43,21 @@ int main(int argc, const char *argv[]) {
 
     // 由 AST 生成 Koopa IR
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
-    ProgramIR* program_ir = NULL;
-    if (fd) {
-        program_ir = Generate_Program(fd);
-    }
+    Visitor_ast visitor_ast;
+
+    fd -> accept(visitor_ast);
 
     std::ofstream out_file(output);
     if (out_file.is_open()) {
         if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
-            program_ir -> Dump_file(out_file);
-            // program_ir -> Dump();
+            visitor_ast.Dump_file(out_file);
+            visitor_ast.Dump();
             // cout << endl;
         }
-        else if (strcmp(mode, "-riscv") == 0) { // 输出 RISC-V 代码
-            // Riscv(program_ir);
-            Riscv_file(program_ir, out_file);
-        }
+        // else if (strcmp(mode, "-riscv") == 0) { // 输出 RISC-V 代码
+        //     // Riscv(program_ir);
+        //     Riscv_file(program_ir, out_file);
+        // }
         out_file.close();
     }
 
