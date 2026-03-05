@@ -31,6 +31,11 @@ class Visitor_ir {
         file.close();
     }
 
+    // 为重复代码设置的工具函数
+    int ParamReg(std::string param); // 获取/分配参数对应的寄存器
+    int TargetReg(int param1, int param2); // target 应给存到哪个寄存器
+    int ThreeOp(ValueIR_2& value, std::string opcode); // 执行三操作数指令
+
     void riscv_get(ProgramIR& program);
     void riscv_get(FunctionIR& function);
     void riscv_get(BasicBlockIR& basic_block);

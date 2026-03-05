@@ -3,6 +3,7 @@
 
 # include <iostream>
 # include <memory>
+# include "sema.hpp"
 # include "koopa.hpp"
 
 // 所有 AST 的基类
@@ -13,6 +14,8 @@ class BaseAST {
     virtual void Dump() const = 0;
 
     virtual void accept(Visitor_ast& visitor){};
+
+    virtual void accept(Visitor_sema& visitor){};
 };
 
 // 非终结符的类均从基类继承
@@ -30,6 +33,269 @@ class CompUnitAST : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// Decl          ::= ConstDecl | VarDecl;
+class DeclAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> constdecl;
+
+    void Dump() const override {
+        std::cout << "DeclAST { ";
+        constdecl->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class DeclAST_2 : public BaseAST {
+    public:
+    std::unique_ptr<BaseAST> vardecl;
+
+    void Dump() const override {
+        std::cout << "DeclAST { ";
+        vardecl->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// ConstDecl     ::= "const" BType ConstDefList ";";
+class ConstDeclAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> btype;
+    std::unique_ptr<BaseAST> constdeflist;
+
+    void Dump() const override {
+        std::cout << "ConstDeclAST { ";
+        btype->Dump();
+        std::cout << ", ";
+        constdeflist->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// BType         ::= "int";
+class BTypeAST : public BaseAST {
+  public:
+    std::string btype;
+
+    void Dump() const override {
+        std::cout << btype;
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
+class ConstDefListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> constdefs;
+
+    void push_back(std::unique_ptr<BaseAST> constdef) {
+        constdefs.push_back(std::move(constdef));
+    }
+
+    void Dump() const override {
+        std::cout << "ConstDefListAST { ";
+        for (int i = 0; i < constdefs.size(); i++) {
+            constdefs[i]->Dump();
+            if (i != constdefs.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// ConstDef      ::= IDENT "=" ConstInitVal;
+class ConstDefAST : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> constinitval;
+
+    void Dump() const override {
+        std::cout << "ConstDef { ";
+        std::cout << ident << ", " << '=' << ", ";
+        constinitval->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// ConstInitVal  ::= ConstExp;
+class ConstInitValAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> constexp;
+
+    void Dump() const override {
+        std::cout << "ConstInitVal { ";
+        constexp->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// VarDecl       ::= BType VarDefList ";";
+class VarDeclAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> btype;
+    std::unique_ptr<BaseAST> vardeflist;
+
+    void Dump() const override {
+        std::cout << "VarDeclAST { ";
+        btype->Dump();
+        std::cout << ", ";
+        vardeflist->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// VarDefList    ::= VarDef | VarDefList "," VarDef;
+class VarDefListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> vardefs;
+
+    void push_back(std::unique_ptr<BaseAST> vardef) {
+        vardefs.push_back(std::move(vardef));
+    }
+
+    void Dump() const override {
+        std::cout << "VarDefListAST { ";
+        for (int i = 0; i < vardefs.size(); i++) {
+            vardefs[i]->Dump();
+            if (i != vardefs.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// VarDef        ::= IDENT | IDENT "=" InitVal;
+class VarDefAST_1 : public BaseAST {
+  public:
+    std::string ident;
+
+    void Dump() const override {
+        std::cout << "VarDefAST { ";
+        std::cout << ident << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class VarDefAST_2 : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> initval;
+
+    void Dump() const override {
+        std::cout << "VarDefAST { ";
+        std::cout << ident << ", =, ";
+        initval->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// InitVal       ::= Exp;
+class InitValAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {
+        std::cout << "InitValAST { ";
+        exp->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 
@@ -51,6 +317,10 @@ class FuncDefAST : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // FuncType  ::= "int";
@@ -65,26 +335,121 @@ class FuncTypeAST : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
-// Block     ::= "{" Stmt "}";
+// Block         ::= "{" BlockItemList "}";
 class BlockAST : public BaseAST {
   public:
-    std::unique_ptr<BaseAST> stmt;
+    std::unique_ptr<BaseAST> blockitemlist;
 
     void Dump() const override {
         std::cout << "BlockAST { ";
-        stmt -> Dump();
+        blockitemlist -> Dump();
         std::cout << " }";
     }
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
-// Stmt        ::= "return" Exp ";";
-class StmtAST : public BaseAST {
+// BlockItemList ::= %empty | BlockItemList BlockItem
+class BlockItemListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> blockitems;
+
+    void push_back(std::unique_ptr<BaseAST> blockitem) {
+        blockitems.push_back(std::move(blockitem)); // 这里好像不能直接用 blockitem，要加上std::move，具体原因还不懂
+    }
+
+    void Dump() const override {
+        std::cout << "BlockItemListAST { ";
+        for (int i = 0; i < blockitems.size(); i++) {
+            blockitems[i]->Dump();
+            if (i != blockitems.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// BlockItem     ::= Decl | Stmt;
+class BlockItemAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> decl;
+
+    void Dump() const override {
+        std::cout << "BlockItemAST { ";
+        decl->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class BlockItemAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> stmt;
+
+    void Dump() const override {
+        std::cout << "BlockItemAST { ";
+        stmt->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// Stmt        ::= LVal "=" Exp ";" | "return" Exp ";";
+class StmtAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> lval;
+    std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {
+        std::cout << "StmtAST { ";
+        lval->Dump();
+        std::cout << ", =, ";
+        exp->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        // visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class StmtAST_2 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
 
@@ -96,6 +461,10 @@ class StmtAST : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 
@@ -113,9 +482,31 @@ class ExpAST : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
-// PrimaryExp  ::= "(" Exp ")" | Number;
+// LVal          ::= IDENT;
+class LValAST : public BaseAST {
+  public:
+    std::string ident;
+
+    void Dump() const override {
+        std::cout << "LValAST { " << ident << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// PrimaryExp  ::= "(" Exp ")" | LVal | Number;
 class PrimaryExpAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
@@ -129,8 +520,30 @@ class PrimaryExpAST_1 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 class PrimaryExpAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> lval;
+
+    void Dump() const override {
+        std::cout << "PrimaryExpAST { ";
+        lval->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class PrimaryExpAST_3 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> number;
 
@@ -142,6 +555,10 @@ class PrimaryExpAST_2 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 
@@ -156,6 +573,10 @@ class NumberAST : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 
@@ -172,6 +593,10 @@ class UnaryExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class UnaryExpAST_2 : public BaseAST {
@@ -190,6 +615,10 @@ class UnaryExpAST_2 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // UnaryOp     ::= "+" | "-" | "!";
@@ -204,6 +633,10 @@ class UnaryOpAST : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 
@@ -220,6 +653,10 @@ class MulExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class MulExpAST_2 : public BaseAST {
@@ -239,6 +676,10 @@ class MulExpAST_2 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // AddExp      ::= MulExp | AddExp ("+" | "-") MulExp;
@@ -254,6 +695,10 @@ class AddExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class AddExpAST_2 : public BaseAST {
@@ -273,6 +718,10 @@ class AddExpAST_2 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // RelExp      ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
@@ -288,6 +737,10 @@ class RelExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class RelExpAST_2 : public BaseAST {
@@ -307,6 +760,10 @@ class RelExpAST_2 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // EqExp       ::= RelExp | EqExp ("==" | "!=") RelExp;
@@ -322,6 +779,10 @@ class EqExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class EqExpAST_2 : public BaseAST {
@@ -341,6 +802,10 @@ class EqExpAST_2 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // LAndExp     ::= EqExp | LAndExp "&&" EqExp;
@@ -356,6 +821,10 @@ class LAndExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class LAndExpAST_2 : public BaseAST {
@@ -375,6 +844,10 @@ class LAndExpAST_2 : public BaseAST {
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
     }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
 };
 
 // LOrExp      ::= LAndExp | LOrExp "||" LAndExp;
@@ -390,6 +863,10 @@ class LOrExpAST_1 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 class LOrExpAST_2 : public BaseAST {
@@ -408,6 +885,30 @@ class LOrExpAST_2 : public BaseAST {
 
     void accept(Visitor_ast& visitor) override {
         visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// ConstExp      ::= Exp;
+class ConstExpAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {
+        std::cout << "ConstExp { ";
+        exp->Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
     }
 };
 

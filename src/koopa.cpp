@@ -9,6 +9,36 @@ void Visitor_ast::ir_init(CompUnitAST& comp_unit) {
     return;
 }
 
+// Lab4
+void Visitor_ast::ir_init(DeclAST_1& decl) {
+    // 没写就是什么都不用做
+}
+
+// Lab4
+void Visitor_ast::ir_init(ConstDeclAST& const_decl) {
+
+}
+
+// Lab4
+void Visitor_ast::ir_init(BTypeAST& btype) {
+
+}
+
+// Lab4
+void Visitor_ast::ir_init(ConstDefListAST& const_def_list) {
+
+}
+
+// Lab4
+void Visitor_ast::ir_init(ConstDefAST& const_def) {
+
+}
+
+// Lab4
+void Visitor_ast::ir_init(ConstInitValAST& const_init_val) {
+
+}
+
 void Visitor_ast::ir_init(FuncDefAST& func_def) {
     this -> function = new FunctionIR();
     func_def.func_type.get() -> accept(*this);
@@ -28,11 +58,28 @@ void Visitor_ast::ir_init(FuncTypeAST& func_type) {
 void Visitor_ast::ir_init(BlockAST& block) {
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = "%entry";
-    block.stmt.get() -> accept(*this);
+    block.blockitemlist.get() -> accept(*this);
     return;
 }
 
-void Visitor_ast::ir_init(StmtAST& stmt) {
+// Lab4
+void Visitor_ast::ir_init(BlockItemListAST& block_item_list) {
+    for (int i = 0; i < block_item_list.blockitems.size(); i++) {
+        block_item_list.blockitems[i].get() -> accept(*this);
+    }
+}
+
+// Lab4
+void Visitor_ast::ir_init(BlockItemAST_1& block_item) {
+
+}
+
+// Lab4
+void Visitor_ast::ir_init(BlockItemAST_2& block_item) {
+    block_item.stmt.get() -> accept(*this);
+}
+
+void Visitor_ast::ir_init(StmtAST_2& stmt) {
     // 只有 return 一种指令，所以无需指令判断
     stmt.exp.get() -> accept(*this);
     ValueIR_1* value = new ValueIR_1();
@@ -50,12 +97,22 @@ void Visitor_ast::ir_init(ExpAST& exp) {
     return;
 }
 
+// Lab4
+void Visitor_ast::ir_init(LValAST& lval) {
+
+}
+
 void Visitor_ast::ir_init(PrimaryExpAST_1& primary_exp) {
     primary_exp.exp.get() -> accept(*this);
     return;
 }
 
+// Lab4
 void Visitor_ast::ir_init(PrimaryExpAST_2& primary_exp) {
+
+}
+
+void Visitor_ast::ir_init(PrimaryExpAST_3& primary_exp) {
     primary_exp.number.get() -> accept(*this);
     return;
 }
@@ -343,3 +400,6 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
     return;
 }
 
+void Visitor_ast::ir_init(ConstExpAST& const_exp) {
+
+}

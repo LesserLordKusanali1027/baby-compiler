@@ -7,6 +7,7 @@
 # include <string.h>
 
 # include "parser.hpp"
+# include "sema.hpp"
 # include "koopa.hpp"
 # include "riscv.hpp"
 
@@ -43,9 +44,13 @@ int main(int argc, const char *argv[]) {
 
     // 由 AST 生成 Koopa IR
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
-    Visitor_ast visitor_ast;
+    Visitor_sema visitor_sema;
+    fd -> accept(visitor_sema);
+    ast -> Dump();
+    cout << endl;
 
-    fd -> accept(visitor_ast);
+    Visitor_ast visitor_ast;
+    // fd -> accept(visitor_ast);
 
     if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
         ofstream out_file(output);

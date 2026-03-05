@@ -8,14 +8,26 @@
 # include "riscv.hpp"
 
 class BaseAST;
+class DeclAST_1;              // Lab4
+class ConstDeclAST;         // Lab4
+class BTypeAST;             // Lab4
+class ConstDefListAST;      // Lab4
+class ConstDefAST;          // Lab4
+class ConstInitValAST;      // Lab4
 class CompUnitAST;
 class FuncDefAST;
 class FuncTypeAST;
 class BlockAST;
-class StmtAST;
+class BlockItemListAST;     // Lab4
+class BlockItemAST_1;       // Lab4
+class BlockItemAST_2;       // Lab4
+class StmtAST_1;
+class StmtAST_2;
 class ExpAST;
+class LValAST;              // Lab4
 class PrimaryExpAST_1;
-class PrimaryExpAST_2;
+class PrimaryExpAST_2;      // Lab4
+class PrimaryExpAST_3;
 class NumberAST;
 class UnaryExpAST_1;
 class UnaryExpAST_2;
@@ -34,6 +46,8 @@ class LAndExpAST_1;
 class LAndExpAST_2;
 class LOrExpAST_1;
 class LOrExpAST_2;
+
+class ConstExpAST;          // Lab4
 
 // 定义数据结构
 // 所有 IR 的基类
@@ -161,12 +175,25 @@ class ValueIR_2 : public BaseIR {
 };
 
 // CompUnit    ::= FuncDef;
+
+// Decl          ::= ConstDecl;
+// ConstDecl     ::= "const" BType ConstDefList ";";
+// BType         ::= "int";
+// ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
+// ConstDef      ::= IDENT "=" ConstInitVal;
+// ConstInitVal  ::= ConstExp;
+
 // FuncDef     ::= FuncType IDENT "(" ")" Block;
 // FuncType    ::= "int";
-// Block       ::= "{" Stmt "}";
+
+// Block         ::= "{" BlockItemList "}";
+// BlockItemList ::= %empty | BlockItemList BlockItem
+// BlockItem     ::= Decl | Stmt;
+
 // Stmt        ::= "return" Exp ";";
 // Exp         ::= LOrExp;
-// PrimaryExp  ::= "(" Exp ")" | Number;
+// LVal          ::= IDENT;
+// PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 // Number      ::= INT_CONST;
 // UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
 // UnaryOp     ::= "+" | "-" | "!";
@@ -178,6 +205,8 @@ class ValueIR_2 : public BaseIR {
 // EqExp       ::= RelExp | EqExp ("==" | "!=") RelExp;
 // LAndExp     ::= EqExp | LAndExp "&&" EqExp;
 // LOrExp      ::= LAndExp | LOrExp "||" LAndExp;
+
+// ConstExp      ::= Exp;
 // 定义 visitor 模式
 class Visitor_ast {
   public:
@@ -197,13 +226,24 @@ class Visitor_ast {
     
   public:
     void ir_init(CompUnitAST& comp_unit);
+    void ir_init(DeclAST_1& decl);                    // Lab4
+    void ir_init(ConstDeclAST& const_decl);         // Lab4
+    void ir_init(BTypeAST& btype);                  // Lab4
+    void ir_init(ConstDefListAST& const_def_list);  // Lab4
+    void ir_init(ConstDefAST& const_def);           // Lab4
+    void ir_init(ConstInitValAST& const_init_val);  // Lab4
     void ir_init(FuncDefAST& func_def);
     void ir_init(FuncTypeAST& func_type);
     void ir_init(BlockAST& block);
-    void ir_init(StmtAST& stmt);
+    void ir_init(BlockItemListAST& block_item_list);// Lab4
+    void ir_init(BlockItemAST_1& block_item);       // Lab4
+    void ir_init(BlockItemAST_2& block_item);       // Lab4
+    void ir_init(StmtAST_2& stmt);
     void ir_init(ExpAST& exp);
+    void ir_init(LValAST& lval);                    // Lab4
     void ir_init(PrimaryExpAST_1& primary_exp);
-    void ir_init(PrimaryExpAST_2& primary_exp);
+    void ir_init(PrimaryExpAST_2& primary_exp);     // Lab4
+    void ir_init(PrimaryExpAST_3& primary_exp);
     void ir_init(NumberAST& number);
     void ir_init(UnaryExpAST_1& unary_exp);
     void ir_init(UnaryExpAST_2& unary_exp);
@@ -222,6 +262,8 @@ class Visitor_ast {
     void ir_init(LAndExpAST_2& l_and_exp);
     void ir_init(LOrExpAST_1& l_or_exp);
     void ir_init(LOrExpAST_2& l_or_exp);
+
+    void ir_init(ConstExpAST& const_exp);
 
     void Dump() {
         program -> Dump();
