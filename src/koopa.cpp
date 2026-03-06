@@ -9,34 +9,74 @@ void Visitor_ast::ir_init(CompUnitAST& comp_unit) {
     return;
 }
 
-// Lab4
 void Visitor_ast::ir_init(DeclAST_1& decl) {
     // 没写就是什么都不用做
 }
 
-// Lab4
+void Visitor_ast::ir_init(DeclAST_2& decl) { // 变量还是要往下传的
+    decl.vardecl.get() -> accept(*this);
+}
+
 void Visitor_ast::ir_init(ConstDeclAST& const_decl) {
 
 }
 
-// Lab4
 void Visitor_ast::ir_init(BTypeAST& btype) {
 
 }
 
-// Lab4
 void Visitor_ast::ir_init(ConstDefListAST& const_def_list) {
 
 }
 
-// Lab4
 void Visitor_ast::ir_init(ConstDefAST& const_def) {
 
 }
 
-// Lab4
 void Visitor_ast::ir_init(ConstInitValAST& const_init_val) {
 
+}
+
+void Visitor_ast::ir_init(VarDeclAST& var_decl) {
+    var_decl.vardeflist.get() -> accept(*this);
+}
+
+void Visitor_ast::ir_init(VarDefListAST& var_def_list) {
+    for (int i = 0; i < var_def_list.vardefs.size(); i++) {
+        var_def_list.vardefs[i].get() -> accept(*this);
+    }
+}
+
+void Visitor_ast::ir_init(VarDefAST_1& var_def) {
+    // 是时候 alloc 了
+    ValueIR_3* value = new ValueIR_3();
+    value -> opcode = "alloc";
+    value -> target = "@" + var_def.ident;
+    value -> operand = "i32";
+    (this -> basic_block -> values).push_back(value);
+}
+void Visitor_ast::ir_init(VarDefAST_2& var_def) {
+    // 左边 alloc
+    ValueIR_3* value1 = new ValueIR_3();
+    value1 -> opcode = "alloc";
+    value1 -> target = "@" + var_def.ident;
+    value1 -> operand = "i32";
+    (this -> basic_block -> values).push_back(value1);
+
+    // 右边 load
+    this->lval_mode = LOAD;
+    var_def.initval.get() -> accept(*this);
+    this->lval_mode = START;
+    ValueIR_4* value2 = new ValueIR_4();
+    value2 -> opcode = "store";
+    value2 -> operand2 = "@" + var_def.ident;
+    value2 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    (this -> basic_block -> values).push_back(value2);
+}
+
+void Visitor_ast::ir_init(InitValAST& init_val) {
+    init_val.exp.get() -> accept(*this);
 }
 
 void Visitor_ast::ir_init(FuncDefAST& func_def) {
@@ -62,26 +102,34 @@ void Visitor_ast::ir_init(BlockAST& block) {
     return;
 }
 
-// Lab4
 void Visitor_ast::ir_init(BlockItemListAST& block_item_list) {
     for (int i = 0; i < block_item_list.blockitems.size(); i++) {
         block_item_list.blockitems[i].get() -> accept(*this);
     }
 }
 
-// Lab4
 void Visitor_ast::ir_init(BlockItemAST_1& block_item) {
-
+    block_item.decl.get() -> accept(*this);
 }
 
-// Lab4
 void Visitor_ast::ir_init(BlockItemAST_2& block_item) {
     block_item.stmt.get() -> accept(*this);
 }
 
+void Visitor_ast::ir_init(StmtAST_1& stmt) {
+    this->lval_mode = LOAD;
+    stmt.exp.get() -> accept(*this);
+    
+    this->lval_mode = STORE;
+    stmt.lval.get() -> accept(*this);
+    this->lval_mode = START;
+}
 void Visitor_ast::ir_init(StmtAST_2& stmt) {
     // 只有 return 一种指令，所以无需指令判断
+    this->lval_mode = LOAD;
     stmt.exp.get() -> accept(*this);
+    this->lval_mode = START;
+
     ValueIR_1* value = new ValueIR_1();
     value -> opcode = "ret";
     // 但需要判断是直接返回数字还是临时变量，有了栈以后不用了
@@ -97,9 +145,25 @@ void Visitor_ast::ir_init(ExpAST& exp) {
     return;
 }
 
-// Lab4
 void Visitor_ast::ir_init(LValAST& lval) {
-
+    // 只要进来了，就是变量，因为常量的 AST 路径是切断的
+    if (this->lval_mode == LOAD) {
+        ValueIR_3* value = new ValueIR_3();
+        value -> opcode = "load";
+        value -> operand = "@" + lval.ident;
+        value -> target = "%" + std::to_string(this->tmp_symbol);
+        this->tmp_symbol++;
+        (this->stk).push(value -> target);
+        (this -> basic_block -> values).push_back(value);
+    }
+    else if (this->lval_mode == STORE) {
+        ValueIR_4* value = new ValueIR_4();
+        value -> opcode = "store";
+        value -> operand1 = (this->stk).top();
+        value -> operand2 = "@" + lval.ident;
+        (this->stk).pop();
+        (this -> basic_block -> values).push_back(value);
+    }
 }
 
 void Visitor_ast::ir_init(PrimaryExpAST_1& primary_exp) {
@@ -107,9 +171,8 @@ void Visitor_ast::ir_init(PrimaryExpAST_1& primary_exp) {
     return;
 }
 
-// Lab4
 void Visitor_ast::ir_init(PrimaryExpAST_2& primary_exp) {
-
+    primary_exp.lval.get() -> accept(*this);
 }
 
 void Visitor_ast::ir_init(PrimaryExpAST_3& primary_exp) {

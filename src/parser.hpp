@@ -70,7 +70,7 @@ class DeclAST_2 : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {
@@ -204,7 +204,7 @@ class VarDeclAST : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {
@@ -232,7 +232,7 @@ class VarDefListAST : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {
@@ -251,7 +251,7 @@ class VarDefAST_1 : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {
@@ -271,7 +271,7 @@ class VarDefAST_2 : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {
@@ -291,7 +291,7 @@ class InitValAST : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {
@@ -442,7 +442,7 @@ class StmtAST_1 : public BaseAST {
     }
 
     void accept(Visitor_ast& visitor) override {
-        // visitor.ir_init(*this);
+        visitor.ir_init(*this);
     }
 
     void accept(Visitor_sema& visitor) override {

@@ -196,6 +196,14 @@ class Visitor_sema {
     void sema_analysis(LOrExpAST_1& l_or_exp);
     void sema_analysis(LOrExpAST_2& l_or_exp);
     void sema_analysis(ConstExpAST& const_exp);
+
+    // 供 IR 生成时查询
+    int get_const(std::string& name) {
+        return symbol_table.get_const(name);
+    }
+    std::string get_var(std::string& name) {
+        return symbol_table.get_var(name);
+    }
 };
 
 # endif

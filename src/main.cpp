@@ -50,7 +50,7 @@ int main(int argc, const char *argv[]) {
     cout << endl;
 
     Visitor_ast visitor_ast;
-    // fd -> accept(visitor_ast);
+    fd -> accept(visitor_ast);
 
     if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
         ofstream out_file(output);

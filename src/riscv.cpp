@@ -4,53 +4,29 @@
 # include "koopa.hpp"
 # include "riscv.hpp"
 
-void Visitor_ir::riscv_get(ProgramIR& program) {
-    file << "  .text\n";
-    for (int i = 0; i < program.functions.size(); i++) {
-        program.functions[i] -> accept(*this);
-    }
-}
-
-void Visitor_ir::riscv_get(FunctionIR& function) {
-    file << "  .globl " << function.name << "\n";
-    file << function.name << ":\n";
-    for (int i = 0; i < function.basic_blocks.size(); i++) {
-        function.basic_blocks[i] -> accept(*this);
-    }
-}
-
-void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
-    for (int i = 0; i < basic_block.values.size(); i++) {
-        basic_block.values[i] -> accept(*this);
-    }
-}
-
-void Visitor_ir::riscv_get(ValueIR_1& value) {
-    if (value.opcode == "ret") {
-        if (value.operand[0] == '%') {
-            file << "  mv    a0, " << register_name[symbol_register[value.operand]] << '\n';
-            file << "  ret\n";
-        }
-        else {
-            file << "  li    a0, " << value.operand << '\n';
-            file << "  ret\n";
-        }
-    }
-}
 
 // 工具函数
 int Visitor_ir::ParamReg(std::string param) {
-    if (symbol_register.count(param))
-        return symbol_register[param];
-    else {
-        file << "  li    " << register_name[current_register]
-             << ", " << param << '\n';
-        symbol_register[param] = current_register;
+    if (param[0] == '%') { // 临时符号
+        // 把内存加载到寄存器
+        file << "  lw    " << register_name[current_register]
+             << ", " << stack_usage[param] << "(sp)\n";
         current_register++;
-        return symbol_register[param];
+        return current_register-1;
+    }
+    else { // 数值
+        if (param == "0") {
+            return 0;
+        }
+        else {
+            file << "  li    " << register_name[current_register]
+                << ", " << param << '\n';
+            current_register++;
+            return current_register-1;
+        }
     }
 }
-
+// 寄存器覆盖选择
 int Visitor_ir::TargetReg(int param1, int param2) {
     if (param1 < param2)
         return param2;
@@ -59,9 +35,8 @@ int Visitor_ir::TargetReg(int param1, int param2) {
     else if (param1 != 0)
         return param1;
     else
-        return current_register;
+        return current_register++;
 }
-
 // 将一条 RISC-V 的结果存入寄存器，但不更新 symbol_register
 // 因为这只是一条 RISC-V 指令，而更新 symbol_register 要到一条 IR 指令结束
 int Visitor_ir::ThreeOp(ValueIR_2& value, std::string opcode) {
@@ -73,14 +48,75 @@ int Visitor_ir::ThreeOp(ValueIR_2& value, std::string opcode) {
          << register_name[r1] << ", "
          << register_name[r2] << '\n';
 
-    if (dest == r1)
-        symbol_register.erase(value.operand1);
-    else if (dest == r2)
-        symbol_register.erase(value.operand2);
-    else
-        current_register++;
-
     return dest;
+}
+// 函数栈空间分配计算
+int Visitor_ir::stack_setup(FunctionIR& function) {
+    int space = 0; // 栈指针需要下移的空间
+
+    for (int i = 0; i < function.basic_blocks.size(); i++) {
+        BasicBlockIR* basic_block = dynamic_cast<BasicBlockIR*>(function.basic_blocks[i]);
+
+        for (int j = 0; j < basic_block->values.size(); j++) {
+            if (dynamic_cast<ValueIR_2*>(basic_block->values[j])) {
+                ValueIR_2* value = dynamic_cast<ValueIR_2*>(basic_block->values[j]);
+                stack_usage[value->target] = space;
+                space += 4;
+            }
+            else if (dynamic_cast<ValueIR_3*>(basic_block->values[j])) {
+                ValueIR_3* value = dynamic_cast<ValueIR_3*>(basic_block->values[j]);
+                stack_usage[value->target] = space;
+                space += 4;
+            }
+        }
+    }
+
+    return space;
+}
+
+
+void Visitor_ir::riscv_get(ProgramIR& program) {
+    file << "  .text\n";
+    for (int i = 0; i < program.functions.size(); i++) {
+        program.functions[i] -> accept(*this);
+    }
+}
+
+void Visitor_ir::riscv_get(FunctionIR& function) {
+    file << "  .globl " << function.name << "\n";
+    file << function.name << ":\n";
+
+    // 计算要分配的栈空间
+    int space = stack_setup(function);
+    file << "  addi sp, sp, -" << std::to_string(space) << '\n';
+
+    for (int i = 0; i < function.basic_blocks.size(); i++) {
+        function.basic_blocks[i] -> accept(*this);
+    }
+
+    // 返回，注意要返回的内容应该已经被放到了 a0 中
+    file << "  addi sp, sp, " << std::to_string(space) << '\n';
+    stack_usage.clear();
+    file << "  ret\n";
+}
+
+void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
+    for (int i = 0; i < basic_block.values.size(); i++) {
+        basic_block.values[i] -> accept(*this);
+    }
+}
+
+void Visitor_ir::riscv_get(ValueIR_1& value) {
+    if (value.opcode == "ret") {
+        if (value.operand[0] == '%') { // 临时符号，lw 内存
+            file << "  lw    a0, " << stack_usage[value.operand] << "(sp)\n";
+        }
+        else {
+            file << "  li    a0, " << value.operand << '\n';
+        }
+    }
+
+    current_register = 1;
 }
 
 // 最复杂的一个
@@ -88,40 +124,48 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
     int dest;
     if (value.opcode == "sub") {
         dest = ThreeOp(value, "  sub   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "eq") {
         // 目前这里第二个参数一定是 0，但仍然放到一起
         dest = ThreeOp(value, "  xor   ");
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "add") {
         // 目前看来，不存在一个临时符号被多次使用的情况，所以前面的寄存器也不用保留，默认覆盖排在后面的寄存器
         dest = ThreeOp(value, "  add   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "mul") {
         dest = ThreeOp(value, "  mul   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     // 注意除法和取模都是不可交换顺序的运算
-    else if (value.opcode == "div") { // 先认为不会出现 0/0
+    else if (value.opcode == "div") {
         dest = ThreeOp(value, "  div   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
-    else if (value.opcode == "mod") { // 先认为不会出现 0%0
+    else if (value.opcode == "mod") {
         dest = ThreeOp(value, "  rem   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "gt") {
         dest = ThreeOp(value, "  sgt   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "lt") {
         dest = ThreeOp(value, "  slt   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "ge") {
         // 先弄个 slt
@@ -129,7 +173,8 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         // 再弄 seqz
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "le") {
         // 先弄个 sgt
@@ -137,7 +182,8 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         // 再弄 seqz
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "ne") {
         // 先弄个 xor
@@ -145,7 +191,8 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         // 再弄 snez
         file << "  snez  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "eq") {
         // 先弄个 xor
@@ -153,14 +200,51 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         // 再弄 seqz
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "and") {
         dest = ThreeOp(value, "  and   ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
     else if (value.opcode == "or") {
         dest = ThreeOp(value, "  or    ");
-        symbol_register[value.target] = dest;
+        file << "  sw    " << register_name[dest] << ", "
+             << stack_usage[value.target] << "(sp)\n";
     }
+
+    current_register = 1;
+}
+
+// 用于 alloc 和 load，但 alloc 啥也不用做了，只需要处理 load
+void Visitor_ir::riscv_get(ValueIR_3& value) {
+    if (value.opcode == "load") {
+        file << "  lw    " << register_name[current_register] << ", "
+             << stack_usage[value.operand] << "(sp)\n";
+        file << "  sw    " << register_name[current_register] << ", "
+             << stack_usage[value.target] << "(sp)\n";
+    }
+
+    current_register = 1;
+}
+
+// 用于处理 store，逻辑和 load 一样
+void Visitor_ir::riscv_get(ValueIR_4& value) {
+    if (value.opcode == "store") {
+        if (value.operand1[0]!='%' && value.operand1[0]!='@') {
+            file << "  li    " << register_name[current_register] << ", "
+                 << value.operand1 << '\n';
+            file << "  sw    " << register_name[current_register] << ", "
+                 << stack_usage[value.operand2] << "(sp)\n";
+        }
+        else {
+            file << "  lw    " << register_name[current_register] << ", "
+                 << stack_usage[value.operand1] << "(sp)\n";
+            file << "  sw    " << register_name[current_register] << ", "
+                 << stack_usage[value.operand2] << "(sp)\n";
+        }
+    }
+
+    current_register = 1;
 }
