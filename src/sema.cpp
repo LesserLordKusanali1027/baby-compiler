@@ -24,7 +24,7 @@ void Visitor_sema::sema_analysis(ConstDefListAST& const_def_list) {
 }
 
 void Visitor_sema::sema_analysis(ConstDefAST& const_def) {
-    if (symbol_table.if_exist(const_def.ident)) {
+    if (symbol_table_stack.if_exist_last(const_def.ident)) {
         std::cout << "Semantic analysis failed: '" << const_def.ident << "' redefined.\n";
         exit(-1);
     }
@@ -33,7 +33,7 @@ void Visitor_sema::sema_analysis(ConstDefAST& const_def) {
     this->error_mode = VAR_UNDF;
 
     const_def.constinitval.get() -> accept(*this);
-    symbol_table.add_const(const_def.ident, stk.top());
+    symbol_table_stack.add_const(const_def.ident, stk.top());
     stk.pop();
 
     this->cal_mode = false;
@@ -55,20 +55,22 @@ void Visitor_sema::sema_analysis(VarDefListAST& var_def_list) {
 }
 
 void Visitor_sema::sema_analysis(VarDefAST_1& var_def) {
-    if (symbol_table.if_exist(var_def.ident)) {
+    if (symbol_table_stack.if_exist_last(var_def.ident)) {
         std::cout << "Semantic analysis failed: '" << var_def.ident << "' redefined.\n";
         exit(-1);
     }
-    std::string value = "@" + var_def.ident;
-    symbol_table.add_var(var_def.ident, value);
+    symbol_table_stack.add_var(var_def.ident);
+
+    var_def.ident = symbol_table_stack.get_var(var_def.ident);
 }
 void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
-    if (symbol_table.if_exist(var_def.ident)) {
+    if (symbol_table_stack.if_exist_last(var_def.ident)) {
         std::cout << "Semantic analysis failed: '" << var_def.ident << "' redefined.\n";
         exit(-1);
     }
-    std::string value = "@" + var_def.ident;
-    symbol_table.add_var(var_def.ident, value);
+    symbol_table_stack.add_var(var_def.ident);
+
+    var_def.ident = symbol_table_stack.get_var(var_def.ident);
 
     this->error_mode = UNDF;
     var_def.initval.get() -> accept(*this);
@@ -84,7 +86,9 @@ void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
 }
 
 void Visitor_sema::sema_analysis(BlockAST& block) {
+    symbol_table_stack.push_table();
     block.blockitemlist.get() -> accept(*this);
+    symbol_table_stack.pop_table();
 }
 
 void Visitor_sema::sema_analysis(BlockItemListAST& block_item_list) {
@@ -110,9 +114,21 @@ void Visitor_sema::sema_analysis(StmtAST_1& stmt) {
     this->error_mode = NONE;
 }
 void Visitor_sema::sema_analysis(StmtAST_2& stmt) {
+    if (!stmt.exp)
+        return;
     this->error_mode = UNDF;
     stmt.exp.get() -> accept(*this);
     this->error_mode = NONE;
+}
+void Visitor_sema::sema_analysis(StmtAST_3& stmt) {
+    if (!stmt.exp)
+        return;
+    this->error_mode = UNDF;
+    stmt.exp.get() -> accept(*this);
+    this->error_mode = NONE;
+}
+void Visitor_sema::sema_analysis(StmtAST_4& stmt) {
+    stmt.block.get() -> accept(*this);
 }
 
 void Visitor_sema::sema_analysis(ExpAST& exp) {
@@ -120,28 +136,32 @@ void Visitor_sema::sema_analysis(ExpAST& exp) {
 }
 
 void Visitor_sema::sema_analysis(LValAST& lval) {
-    if (!symbol_table.if_exist(lval.ident)) {
+    // 先进行报错检测
+    if (!symbol_table_stack.if_exist_all(lval.ident)) {
         std::cout << "Semantic analysis failed: ident '" << lval.ident << "' not defined.\n";
         exit(-1);
     }
 
     if (this->error_mode == CONST_UNDF) {
-        if (symbol_table.if_const(lval.ident)) {
+        if (symbol_table_stack.if_const(lval.ident)) {
             std::cout << "Semantic analysis failed: const '" << lval.ident << "' cannot be assigned again.\n";
             exit(-1);
         }
     }
     else if (this->error_mode == VAR_UNDF) {
-        if (symbol_table.if_var(lval.ident)) {
+        if (symbol_table_stack.if_var(lval.ident)) {
             std::cout << "Semantic analysis failed: var '" << lval.ident << "' cannot be used to assign for const.\n";
             exit(-1);
         }
     }
 
     // 获取 IDENT 对应的值，向上返回，以便替换成 NumberAST
-    if (symbol_table.if_const(lval.ident)) {
-        this->num = symbol_table.get_const(lval.ident);
+    if (symbol_table_stack.if_const(lval.ident)) {
+        this->num = symbol_table_stack.get_const(lval.ident);
         this->if_fold = true;
+    }
+    else { // 修改变量名
+        lval.ident = symbol_table_stack.get_var(lval.ident);
     }
 }
 

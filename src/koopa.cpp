@@ -83,7 +83,9 @@ void Visitor_ast::ir_init(FuncDefAST& func_def) {
     this -> function = new FunctionIR();
     func_def.func_type.get() -> accept(*this);
     this -> function -> name = func_def.ident;
-    // 这里只有一个基本块，逻辑简单了许多
+    // 先把基本块的定义放在函数里，因为 BlockAST 与 IR 中的基本块并不等同
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = "%entry";
     func_def.block.get() -> accept(*this);
     (function -> basic_blocks).push_back(this -> basic_block);
     return;
@@ -96,8 +98,6 @@ void Visitor_ast::ir_init(FuncTypeAST& func_type) {
 }
 
 void Visitor_ast::ir_init(BlockAST& block) {
-    this -> basic_block = new BasicBlockIR();
-    this -> basic_block -> name = "%entry";
     block.blockitemlist.get() -> accept(*this);
     return;
 }
@@ -116,6 +116,7 @@ void Visitor_ast::ir_init(BlockItemAST_2& block_item) {
     block_item.stmt.get() -> accept(*this);
 }
 
+// Stmt      ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
 void Visitor_ast::ir_init(StmtAST_1& stmt) {
     this->lval_mode = LOAD;
     stmt.exp.get() -> accept(*this);
@@ -123,9 +124,19 @@ void Visitor_ast::ir_init(StmtAST_1& stmt) {
     this->lval_mode = STORE;
     stmt.lval.get() -> accept(*this);
     this->lval_mode = START;
+
 }
 void Visitor_ast::ir_init(StmtAST_2& stmt) {
     // 只有 return 一种指令，所以无需指令判断
+    
+    if (!stmt.exp) { // 只有 return; 的时候，默认 return 0
+        ValueIR_1* value = new ValueIR_1();
+        value -> opcode = "ret";
+        value -> operand = "0";
+        (this -> basic_block -> values).push_back(value);
+        return;
+    }
+
     this->lval_mode = LOAD;
     stmt.exp.get() -> accept(*this);
     this->lval_mode = START;
@@ -138,6 +149,18 @@ void Visitor_ast::ir_init(StmtAST_2& stmt) {
 
     (this -> basic_block -> values).push_back(value);
     return;
+}
+void Visitor_ast::ir_init(StmtAST_3& stmt) {
+    // 没用的计算
+    if (stmt.exp) {
+        this->lval_mode = LOAD;
+        stmt.exp.get() -> accept(*this);
+        this->lval_mode = START;
+        (this->stk).pop();
+    }
+}
+void Visitor_ast::ir_init(StmtAST_4& stmt) {
+    stmt.block.get() -> accept(*this);
 }
 
 void Visitor_ast::ir_init(ExpAST& exp) {

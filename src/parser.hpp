@@ -427,7 +427,7 @@ class BlockItemAST_2 : public BaseAST {
     }
 };
 
-// Stmt        ::= LVal "=" Exp ";" | "return" Exp ";";
+// Stmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
 class StmtAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> lval;
@@ -455,7 +455,49 @@ class StmtAST_2 : public BaseAST {
 
     void Dump() const override {
         std::cout << "StmtAST { ";
-        exp -> Dump();
+        if (exp)
+            exp -> Dump();
+        else
+            std::cout << "NULL";
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class StmtAST_3 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {
+        std::cout << "StmtAST { ";
+        if (exp)
+            exp -> Dump();
+        else
+            std::cout << "NULL";
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class StmtAST_4 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> block;
+
+    void Dump() const override {
+        std::cout << "StmtAST { ";
+        block -> Dump();
         std::cout << " }";
     }
 

@@ -31,6 +31,8 @@ class BlockItemAST_1;
 class BlockItemAST_2;
 class StmtAST_1;
 class StmtAST_2;
+class StmtAST_3;
+class StmtAST_4;
 class ExpAST;
 class LValAST;
 class PrimaryExpAST_1;
@@ -229,23 +231,23 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 
 // CompUnit      ::= FuncDef;
 
-// Decl          ::= ConstDecl | VarDecl; 改
+// Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
 // BType         ::= "int";
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
 // ConstDef      ::= IDENT "=" ConstInitVal;
 // ConstInitVal  ::= ConstExp;
-// VarDecl       ::= BType VarDefList ";"; 增
-// VarDefList    ::= VarDef | VarDefList "," VarDef; 增
-// VarDef        ::= IDENT | IDENT "=" InitVal; 增
-// InitVal       ::= Exp; 增
+// VarDecl       ::= BType VarDefList ";";
+// VarDefList    ::= VarDef | VarDefList "," VarDef;
+// VarDef        ::= IDENT | IDENT "=" InitVal;
+// InitVal       ::= Exp;
 
 // FuncDef       ::= FuncType IDENT "(" ")" Block;
 // FuncType      ::= "int";
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem
 // BlockItem     ::= Decl | Stmt;
-// Stmt          ::= LVal "=" Exp ";" | "return" Exp ";"; 改
+// Stmt          ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT;
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
@@ -302,6 +304,8 @@ class Visitor_ast {
     void ir_init(BlockItemAST_2& block_item);
     void ir_init(StmtAST_1& stmt);
     void ir_init(StmtAST_2& stmt);
+    void ir_init(StmtAST_3& stmt);
+    void ir_init(StmtAST_4& stmt);
     void ir_init(ExpAST& exp);
     void ir_init(LValAST& lval);
     void ir_init(PrimaryExpAST_1& primary_exp);

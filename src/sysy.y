@@ -245,6 +245,7 @@ BlockItem
   }
   ;
 
+// Stmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
 // Stmt        ::= LVal "=" Exp ";" | "return" Exp ";";
 Stmt
   : LVal '=' Exp ';' {
@@ -256,6 +257,26 @@ Stmt
   | RETURN Exp ';' {
     auto ast = new StmtAST_2();
     ast -> exp = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  | RETURN ';' {
+    auto ast = new StmtAST_2();
+    ast -> exp = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | Exp ';' {
+    auto ast = new StmtAST_3();
+    ast -> exp = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | ';' {
+    auto ast = new StmtAST_3();
+    ast -> exp = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | Block {
+    auto ast = new StmtAST_4();
+    ast -> block = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
   ;
