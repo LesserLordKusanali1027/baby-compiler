@@ -80,14 +80,22 @@ void Visitor_ast::ir_init(InitValAST& init_val) {
 }
 
 void Visitor_ast::ir_init(FuncDefAST& func_def) {
+    // 定义新的函数 IR
     this -> function = new FunctionIR();
     func_def.func_type.get() -> accept(*this);
     this -> function -> name = func_def.ident;
+    
     // 先把基本块的定义放在函数里，因为 BlockAST 与 IR 中的基本块并不等同
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = "%entry";
+
+    // 更新 then-else-end 的组数，和 return 的组数
+    this -> block_num = 1;
+    this -> return_num = 1;
+
     func_def.block.get() -> accept(*this);
-    (function -> basic_blocks).push_back(this -> basic_block);
+    // 现在 push 基本块的地方有很多了， FuncDefAST 这里暂时不需要了
+    // (function -> basic_blocks).push_back(this -> basic_block);
     return;
 }
 
@@ -116,20 +124,25 @@ void Visitor_ast::ir_init(BlockItemAST_2& block_item) {
     block_item.stmt.get() -> accept(*this);
 }
 
-// Stmt      ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
+// Stmt          ::= MatchedStmt | UnmatchedStmt
 void Visitor_ast::ir_init(StmtAST_1& stmt) {
-    this->lval_mode = LOAD;
-    stmt.exp.get() -> accept(*this);
-    
-    this->lval_mode = STORE;
-    stmt.lval.get() -> accept(*this);
-    this->lval_mode = START;
-
+    stmt.matchedstmt.get() -> accept(*this);
 }
 void Visitor_ast::ir_init(StmtAST_2& stmt) {
-    // 只有 return 一种指令，所以无需指令判断
+    stmt.unmatchedstmt.get() -> accept(*this);
+}
+
+// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+void Visitor_ast::ir_init(MatchedStmtAST_1& matched_stmt) {
+    this->lval_mode = LOAD;
+    matched_stmt.exp.get() -> accept(*this);
     
-    if (!stmt.exp) { // 只有 return; 的时候，默认 return 0
+    this->lval_mode = STORE;
+    matched_stmt.lval.get() -> accept(*this);
+    this->lval_mode = START;
+}
+void Visitor_ast::ir_init(MatchedStmtAST_2& matched_stmt) {
+    if (!matched_stmt.exp) { // 只有 return; 的时候，默认 return 0
         ValueIR_1* value = new ValueIR_1();
         value -> opcode = "ret";
         value -> operand = "0";
@@ -138,7 +151,7 @@ void Visitor_ast::ir_init(StmtAST_2& stmt) {
     }
 
     this->lval_mode = LOAD;
-    stmt.exp.get() -> accept(*this);
+    matched_stmt.exp.get() -> accept(*this);
     this->lval_mode = START;
 
     ValueIR_1* value = new ValueIR_1();
@@ -148,19 +161,149 @@ void Visitor_ast::ir_init(StmtAST_2& stmt) {
     (this->stk).pop();
 
     (this -> basic_block -> values).push_back(value);
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = "%return_" + std::to_string(this->return_num);
+    this->return_num++;
+
     return;
 }
-void Visitor_ast::ir_init(StmtAST_3& stmt) {
-    // 没用的计算
-    if (stmt.exp) {
+void Visitor_ast::ir_init(MatchedStmtAST_3& matched_stmt) {
+    if (matched_stmt.exp) {
         this->lval_mode = LOAD;
-        stmt.exp.get() -> accept(*this);
+        matched_stmt.exp.get() -> accept(*this);
         this->lval_mode = START;
         (this->stk).pop();
     }
 }
-void Visitor_ast::ir_init(StmtAST_4& stmt) {
-    stmt.block.get() -> accept(*this);
+void Visitor_ast::ir_init(MatchedStmtAST_4& matched_stmt) {
+    matched_stmt.block.get() -> accept(*this);
+}
+void Visitor_ast::ir_init(MatchedStmtAST_5& matched_stmt) {
+    this->lval_mode = LOAD;
+    matched_stmt.exp.get() -> accept(*this);
+    this->lval_mode = START;
+
+    // 准备 br 跳转指令
+    std::string then_block = "%then_" + std::to_string(this->block_num);
+    std::string else_block = "%else_" + std::to_string(this->block_num);
+    std::string end_block = "%end_" + std::to_string(this->block_num);
+    this->block_num++;
+
+    ValueIR_5* value1 = new ValueIR_5();
+    value1 -> opcode = "br";
+    value1 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value1 -> operand2 = then_block;
+    value1 -> operand3 = else_block;
+
+    // 加入指令并新建基本块
+    (this -> basic_block -> values).push_back(value1);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = then_block;
+
+    // then 分支
+    matched_stmt.matchedstmt1.get() -> accept(*this);
+    ValueIR_1* value2 = new ValueIR_1();
+    value2 -> opcode = "jump";
+    value2 -> operand = end_block;
+    (this -> basic_block -> values).push_back(value2);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = else_block;
+
+    // else 分支
+    matched_stmt.matchedstmt2.get() -> accept(*this);
+    ValueIR_1* value3 = new ValueIR_1();
+    value3 -> opcode = "jump";
+    value3 -> operand = end_block;
+    (this -> basic_block -> values).push_back(value3);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = end_block;
+}
+
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+void Visitor_ast::ir_init(UnmatchedStmtAST_1& unmatched_stmt) {
+    this->lval_mode = LOAD;
+    unmatched_stmt.exp.get() -> accept(*this);
+    this->lval_mode = START;
+
+    // 准备基本块名字
+    std::string then_block = "%then_" + std::to_string(this->block_num);
+    std::string end_block = "%end_" + std::to_string(this->block_num);
+    this->block_num++;
+
+    // 准备 br 指令
+    ValueIR_5* value1 = new ValueIR_5();
+    value1 -> opcode = "br";
+    value1 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value1 -> operand2 = then_block;
+    value1 -> operand3 = end_block;
+
+    // 加入指令并新建基本块
+    (this -> basic_block -> values).push_back(value1);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = then_block;
+
+    // then 分支
+    unmatched_stmt.stmt.get() -> accept(*this);
+    ValueIR_1* value2 = new ValueIR_1();
+    value2 -> opcode = "jump";
+    value2 -> operand = end_block;
+    (this -> basic_block -> values).push_back(value2);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = end_block;
+}
+void Visitor_ast::ir_init(UnmatchedStmtAST_2& unmatched_stmt) {
+    this->lval_mode = LOAD;
+    unmatched_stmt.exp.get() -> accept(*this);
+    this->lval_mode = START;
+
+    // 准备基本块名字
+    std::string then_block = "%then_" + std::to_string(this->block_num);
+    std::string else_block = "%else_" + std::to_string(this->block_num);
+    std::string end_block = "%end_" + std::to_string(this->block_num);
+    this->block_num++;
+
+    // 准备 br 指令
+    ValueIR_5* value1 = new ValueIR_5();
+    value1 -> opcode = "br";
+    value1 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value1 -> operand2 = then_block;
+    value1 -> operand3 = else_block;
+
+    // 加入指令并新建基本块
+    (this -> basic_block -> values).push_back(value1);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = then_block;
+
+    // then 分支
+    unmatched_stmt.matchedstmt.get() -> accept(*this);
+    ValueIR_1* value2 = new ValueIR_1();
+    value2 -> opcode = "jump";
+    value2 -> operand = end_block;
+    (this -> basic_block -> values).push_back(value2);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = else_block;
+
+    // else 分支
+    unmatched_stmt.unmatchedstmt.get() -> accept(*this);
+    ValueIR_1* value3 = new ValueIR_1();
+    value3 -> opcode = "jump";
+    value3 -> operand = end_block;
+    (this -> basic_block -> values).push_back(value3);
+    (function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = end_block;
 }
 
 void Visitor_ast::ir_init(ExpAST& exp) {

@@ -31,8 +31,13 @@ class BlockItemAST_1;
 class BlockItemAST_2;
 class StmtAST_1;
 class StmtAST_2;
-class StmtAST_3;
-class StmtAST_4;
+class MatchedStmtAST_1;
+class MatchedStmtAST_2;
+class MatchedStmtAST_3;
+class MatchedStmtAST_4;
+class MatchedStmtAST_5;
+class UnmatchedStmtAST_1;
+class UnmatchedStmtAST_2;
 class ExpAST;
 class LValAST;
 class PrimaryExpAST_1;
@@ -104,15 +109,21 @@ class FunctionIR : public BaseIR {
 
     void Dump() const override {
         std::cout << "fun @" << name << "(): " << function_type << " {\n";
-        for (int i = 0; i < basic_blocks.size(); i++)
+        for (int i = 0; i < basic_blocks.size(); i++) {
             basic_blocks[i] -> Dump();
+            if (i != basic_blocks.size()-1)
+                std::cout << '\n';
+        }
         std::cout << "}";
     }
 
     void Dump_file(std::ofstream& file) override {
         file << "fun @" << name << "(): " << function_type << " {\n";
-        for (int i = 0; i < basic_blocks.size(); i++)
+        for (int i = 0; i < basic_blocks.size(); i++) {
             basic_blocks[i] -> Dump_file(file);
+            if (i != basic_blocks.size()-1)
+                file << '\n';
+        }
         file << "}";
     }
 
@@ -160,7 +171,6 @@ class ValueIR_1 : public BaseIR {
         visitor.riscv_get(*this);
     }
 };
-
 class ValueIR_2 : public BaseIR {
   public:
     std::string target;
@@ -182,7 +192,6 @@ class ValueIR_2 : public BaseIR {
         visitor.riscv_get(*this);
     }
 };
-
 class ValueIR_3 : public BaseIR {
     // 用于 alloc 和 load 这种单操作数单目标指令
   public:
@@ -204,7 +213,6 @@ class ValueIR_3 : public BaseIR {
         visitor.riscv_get(*this);
     }
 };
-
 class ValueIR_4 : public BaseIR {
     // 用于 store 这种双操作数无目标指令
   public:
@@ -220,6 +228,28 @@ class ValueIR_4 : public BaseIR {
     void Dump_file(std::ofstream& file) override {
         file << "  " << opcode << " " << operand1 << ", ";
         file << operand2 << '\n';
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
+class ValueIR_5 : public BaseIR {
+    // 三操作数无目标指令，用于 br
+  public:
+    std::string opcode;
+    std::string operand1;
+    std::string operand2;
+    std::string operand3;
+
+    void Dump() const override {
+        std::cout << "  " << opcode << " ";
+        std::cout << operand1 << ", " << operand2 << ", " << operand3 << '\n';
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        file << "  " << opcode << " ";
+        file << operand1 << ", " << operand2 << ", " << operand3 << '\n';
     }
 
     void accept(Visitor_ir& visitor) override {
@@ -247,7 +277,9 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem
 // BlockItem     ::= Decl | Stmt;
-// Stmt          ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
+// Stmt          ::= MatchedStmt | UnmatchedStmt
+// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT;
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
@@ -280,9 +312,13 @@ class Visitor_ast {
     // 进入 LVal 后有两种模式，load 或 store
     LVal_Mode lval_mode = START;
     
+    // 基本块名字相关内容
+    int block_num; // 记录 then-else-end 该用第几组了
+    // 记录 return 是第几组了
+    int return_num;
+  
   public:
     void ir_init(CompUnitAST& comp_unit);
-
     void ir_init(DeclAST_1& decl);
     void ir_init(DeclAST_2& decl);
     void ir_init(ConstDeclAST& const_decl);
@@ -304,8 +340,13 @@ class Visitor_ast {
     void ir_init(BlockItemAST_2& block_item);
     void ir_init(StmtAST_1& stmt);
     void ir_init(StmtAST_2& stmt);
-    void ir_init(StmtAST_3& stmt);
-    void ir_init(StmtAST_4& stmt);
+    void ir_init(MatchedStmtAST_1& matched_stmt);
+    void ir_init(MatchedStmtAST_2& matched_stmt);
+    void ir_init(MatchedStmtAST_3& matched_stmt);
+    void ir_init(MatchedStmtAST_4& matched_stmt);
+    void ir_init(MatchedStmtAST_5& matched_stmt);
+    void ir_init(UnmatchedStmtAST_1& unmatched_stmt);
+    void ir_init(UnmatchedStmtAST_2& unmatched_stmt);
     void ir_init(ExpAST& exp);
     void ir_init(LValAST& lval);
     void ir_init(PrimaryExpAST_1& primary_exp);

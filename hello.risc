@@ -1,0 +1,20 @@
+  .text
+  .globl main
+main:
+  addi sp, sp, -0
+  li    t0, 1
+  bnez  t0, then_1
+  j     end_1
+
+then_1:
+  li    a0, 1
+  addi sp, sp, 0
+  ret
+
+return_1:
+  j     end_1
+
+end_1:
+  li    a0, 0
+  addi sp, sp, 0
+  ret

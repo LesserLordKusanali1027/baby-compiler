@@ -428,13 +428,133 @@ class BlockItemAST_2 : public BaseAST {
 };
 
 // Stmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
+// Stmt ::= MatchedStmt | UnmatchedStmt;
 class StmtAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> matchedstmt;
+
+    void Dump() const override {
+        std::cout << "StmtAST { ";
+        matchedstmt -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class StmtAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> unmatchedstmt;
+
+    void Dump() const override {
+        std::cout << "StmtAST { ";
+        unmatchedstmt -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+// class StmtAST_1 : public BaseAST {
+//   public:
+//     std::unique_ptr<BaseAST> lval;
+//     std::unique_ptr<BaseAST> exp;
+
+//     void Dump() const override {
+//         std::cout << "StmtAST { ";
+//         lval->Dump();
+//         std::cout << ", =, ";
+//         exp->Dump();
+//         std::cout << " }";
+//     }
+
+//     void accept(Visitor_ast& visitor) override {
+//         visitor.ir_init(*this);
+//     }
+
+//     void accept(Visitor_sema& visitor) override {
+//         visitor.sema_analysis(*this);
+//     }
+// };
+// class StmtAST_2 : public BaseAST {
+//   public:
+//     std::unique_ptr<BaseAST> exp;
+
+//     void Dump() const override {
+//         std::cout << "StmtAST { ";
+//         if (exp)
+//             exp -> Dump();
+//         else
+//             std::cout << "NULL";
+//         std::cout << " }";
+//     }
+
+//     void accept(Visitor_ast& visitor) override {
+//         visitor.ir_init(*this);
+//     }
+
+//     void accept(Visitor_sema& visitor) override {
+//         visitor.sema_analysis(*this);
+//     }
+// };
+// class StmtAST_3 : public BaseAST {
+//   public:
+//     std::unique_ptr<BaseAST> exp;
+
+//     void Dump() const override {
+//         std::cout << "StmtAST { ";
+//         if (exp)
+//             exp -> Dump();
+//         else
+//             std::cout << "NULL";
+//         std::cout << " }";
+//     }
+
+//     void accept(Visitor_ast& visitor) override {
+//         visitor.ir_init(*this);
+//     }
+
+//     void accept(Visitor_sema& visitor) override {
+//         visitor.sema_analysis(*this);
+//     }
+// };
+// class StmtAST_4 : public BaseAST {
+//   public:
+//     std::unique_ptr<BaseAST> block;
+
+//     void Dump() const override {
+//         std::cout << "StmtAST { ";
+//         block -> Dump();
+//         std::cout << " }";
+//     }
+
+//     void accept(Visitor_ast& visitor) override {
+//         visitor.ir_init(*this);
+//     }
+
+//     void accept(Visitor_sema& visitor) override {
+//         visitor.sema_analysis(*this);
+//     }
+// };
+
+// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+class MatchedStmtAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> lval;
     std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {
-        std::cout << "StmtAST { ";
+        std::cout << "MatchedStmtAST { ";
         lval->Dump();
         std::cout << ", =, ";
         exp->Dump();
@@ -449,12 +569,12 @@ class StmtAST_1 : public BaseAST {
         visitor.sema_analysis(*this);
     }
 };
-class StmtAST_2 : public BaseAST {
+class MatchedStmtAST_2 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {
-        std::cout << "StmtAST { ";
+        std::cout << "MatchedStmtAST { ";
         if (exp)
             exp -> Dump();
         else
@@ -470,12 +590,12 @@ class StmtAST_2 : public BaseAST {
         visitor.sema_analysis(*this);
     }
 };
-class StmtAST_3 : public BaseAST {
+class MatchedStmtAST_3 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {
-        std::cout << "StmtAST { ";
+        std::cout << "MatchedStmtAST { ";
         if (exp)
             exp -> Dump();
         else
@@ -491,13 +611,84 @@ class StmtAST_3 : public BaseAST {
         visitor.sema_analysis(*this);
     }
 };
-class StmtAST_4 : public BaseAST {
+class MatchedStmtAST_4 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> block;
 
     void Dump() const override {
-        std::cout << "StmtAST { ";
+        std::cout << "MatchedStmtAST { ";
         block -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class MatchedStmtAST_5 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseAST> matchedstmt1;
+    std::unique_ptr<BaseAST> matchedstmt2;
+
+    void Dump() const override {
+        std::cout << "MatchedStmtAST { if, ";
+        exp -> Dump();
+        std::cout << ", ";
+        matchedstmt1 -> Dump();
+        std::cout << ", else, ";
+        matchedstmt2 -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+class UnmatchedStmtAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseAST> stmt;
+
+    void Dump() const override {
+        std::cout << "UnmatchedStmtAST { if, ";
+        exp -> Dump();
+        std::cout << ", ";
+        stmt -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class UnmatchedStmtAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseAST> matchedstmt;
+    std::unique_ptr<BaseAST> unmatchedstmt;
+
+    void Dump() const override {
+        std::cout << "UnmatchedStmtAST { if, ";
+        exp -> Dump();
+        std::cout << ", ";
+        matchedstmt -> Dump();
+        std::cout << ", else, ";
+        unmatchedstmt -> Dump();
         std::cout << " }";
     }
 

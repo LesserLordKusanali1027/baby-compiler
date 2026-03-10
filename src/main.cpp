@@ -46,8 +46,8 @@ int main(int argc, const char *argv[]) {
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
     Visitor_sema visitor_sema;
     fd -> accept(visitor_sema);
-    ast -> Dump();
-    cout << endl;
+    // ast -> Dump();
+    // cout << endl;
 
     Visitor_ast visitor_ast;
     fd -> accept(visitor_ast);

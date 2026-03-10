@@ -105,30 +105,63 @@ void Visitor_sema::sema_analysis(BlockItemAST_2& block_item) {
     block_item.stmt.get() -> accept(*this);
 }
 
+// 进行了较大的改动
 void Visitor_sema::sema_analysis(StmtAST_1& stmt) {
-    this->error_mode = CONST_UNDF;
-    stmt.lval.get() -> accept(*this);
-
-    this->error_mode = UNDF;
-    stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    stmt.matchedstmt.get() -> accept(*this);
 }
 void Visitor_sema::sema_analysis(StmtAST_2& stmt) {
-    if (!stmt.exp)
-        return;
+    stmt.unmatchedstmt.get() -> accept(*this);
+}
+
+// 复制了之前 Stmt 的四个函数
+void Visitor_sema::sema_analysis(MatchedStmtAST_1& matched_stmt) {
+    this->error_mode = CONST_UNDF;
+    matched_stmt.lval.get() -> accept(*this);
+
     this->error_mode = UNDF;
-    stmt.exp.get() -> accept(*this);
+    matched_stmt.exp.get() -> accept(*this);
     this->error_mode = NONE;
 }
-void Visitor_sema::sema_analysis(StmtAST_3& stmt) {
-    if (!stmt.exp)
+void Visitor_sema::sema_analysis(MatchedStmtAST_2& matched_stmt) {
+    if (!matched_stmt.exp)
         return;
     this->error_mode = UNDF;
-    stmt.exp.get() -> accept(*this);
+    matched_stmt.exp.get() -> accept(*this);
     this->error_mode = NONE;
 }
-void Visitor_sema::sema_analysis(StmtAST_4& stmt) {
-    stmt.block.get() -> accept(*this);
+void Visitor_sema::sema_analysis(MatchedStmtAST_3& matched_stmt) {
+    if (!matched_stmt.exp)
+        return;
+    this->error_mode = UNDF;
+    matched_stmt.exp.get() -> accept(*this);
+    this->error_mode = NONE;
+}
+void Visitor_sema::sema_analysis(MatchedStmtAST_4& matched_stmt) {
+    matched_stmt.block.get() -> accept(*this);
+}
+void Visitor_sema::sema_analysis(MatchedStmtAST_5& matched_stmt) {
+    this->error_mode = UNDF;
+    matched_stmt.exp.get() -> accept(*this);
+    this->error_mode = NONE;
+
+    matched_stmt.matchedstmt1.get() -> accept(*this);
+    matched_stmt.matchedstmt2.get() -> accept(*this);
+}
+
+void Visitor_sema::sema_analysis(UnmatchedStmtAST_1& unmatched_stmt) {
+    this->error_mode = UNDF;
+    unmatched_stmt.exp.get() -> accept(*this);
+    this->error_mode = NONE;
+
+    unmatched_stmt.stmt.get() -> accept(*this);
+}
+void Visitor_sema::sema_analysis(UnmatchedStmtAST_2& unmatched_stmt) {
+    this->error_mode = UNDF;
+    unmatched_stmt.exp.get() -> accept(*this);
+    this->error_mode = NONE;
+
+    unmatched_stmt.matchedstmt.get() -> accept(*this);
+    unmatched_stmt.unmatchedstmt.get() -> accept(*this);
 }
 
 void Visitor_sema::sema_analysis(ExpAST& exp) {

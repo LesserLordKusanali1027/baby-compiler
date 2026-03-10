@@ -87,25 +87,30 @@ void Visitor_ir::riscv_get(FunctionIR& function) {
     file << function.name << ":\n";
 
     // 计算要分配的栈空间
-    int space = stack_setup(function);
-    file << "  addi sp, sp, -" << std::to_string(space) << '\n';
+    this->stack_frame = stack_setup(function);
+    file << "  addi sp, sp, -" << std::to_string(this->stack_frame) << '\n';
 
     for (int i = 0; i < function.basic_blocks.size(); i++) {
         function.basic_blocks[i] -> accept(*this);
     }
 
     // 返回，注意要返回的内容应该已经被放到了 a0 中
-    file << "  addi sp, sp, " << std::to_string(space) << '\n';
+    // 下面两条指令放到 ret 中了
+    // file << "  addi sp, sp, " << std::to_string(this->stack_frame) << '\n';
     stack_usage.clear();
-    file << "  ret\n";
+    // file << "  ret\n";
 }
 
 void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
+    if (basic_block.name != "%entry") {
+        file << '\n' <<basic_block.name.substr(1) << ":\n";
+    }
     for (int i = 0; i < basic_block.values.size(); i++) {
         basic_block.values[i] -> accept(*this);
     }
 }
 
+// 处理 ret 和 jump
 void Visitor_ir::riscv_get(ValueIR_1& value) {
     if (value.opcode == "ret") {
         if (value.operand[0] == '%') { // 临时符号，lw 内存
@@ -114,6 +119,13 @@ void Visitor_ir::riscv_get(ValueIR_1& value) {
         else {
             file << "  li    a0, " << value.operand << '\n';
         }
+        
+        // 恢复栈帧 + 返回
+        file << "  addi sp, sp, " << std::to_string(this->stack_frame) << '\n';
+        file << "  ret\n";
+    }
+    else if (value.opcode == "jump") {
+        file << "  j     " << value.operand.substr(1) << '\n';
     }
 
     current_register = 1;
@@ -244,6 +256,25 @@ void Visitor_ir::riscv_get(ValueIR_4& value) {
             file << "  sw    " << register_name[current_register] << ", "
                  << stack_usage[value.operand2] << "(sp)\n";
         }
+    }
+
+    current_register = 1;
+}
+
+// 用于处理 br 指令
+void Visitor_ir::riscv_get(ValueIR_5& value) {
+    if (value.opcode == "br") {
+        if (value.operand1[0] == '%') {
+            file << "  lw    " << register_name[current_register] << ", "
+                 << stack_usage[value.operand1] << "(sp)\n";
+        }
+        else {
+            file << "  li    " << register_name[current_register] << ", "
+                 << value.operand1 << '\n';
+        }
+        file << "  bnez  " << register_name[current_register] << ", "
+             << value.operand2.substr(1) << '\n';
+        file << "  j     " << value.operand3.substr(1) << '\n';
     }
 
     current_register = 1;

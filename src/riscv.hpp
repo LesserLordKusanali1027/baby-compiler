@@ -12,6 +12,7 @@ class ValueIR_1;
 class ValueIR_2;
 class ValueIR_3;
 class ValueIR_4;
+class ValueIR_5;
 
 class Visitor_ir {
   private:
@@ -22,6 +23,8 @@ class Visitor_ir {
     // std::unordered_map<std::string, int> symbol_register;
     // 记录每个变量、临时符号在栈上的相对偏移
     std::unordered_map<std::string, int> stack_usage;
+    int stack_frame; // 记录帧空间大小
+
   public:
     Visitor_ir(const char* output) {
         file.open(output);
@@ -48,6 +51,7 @@ class Visitor_ir {
     void riscv_get(ValueIR_2& value);
     void riscv_get(ValueIR_3& value);
     void riscv_get(ValueIR_4& value);
+    void riscv_get(ValueIR_5& value);
     
 };
 

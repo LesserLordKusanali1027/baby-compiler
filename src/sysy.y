@@ -40,7 +40,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN GE LE EQ NE AND OR CONST
+%token INT RETURN GE LE EQ NE AND OR CONST IF ELSE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
@@ -50,6 +50,7 @@ using namespace std;
 %type <constitemlist_val> ConstDefList
 %type <blockitemlist_val> BlockItemList
 %type <vardeflist_val> VarDefList
+%type <ast_val> MatchedStmt UnmatchedStmt
 
 %%
 
@@ -246,37 +247,75 @@ BlockItem
   ;
 
 // Stmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
-// Stmt        ::= LVal "=" Exp ";" | "return" Exp ";";
+// Stmt ::= MatchedStmt | UnmatchedStmt;
 Stmt
-  : LVal '=' Exp ';' {
+  : MatchedStmt {
     auto ast = new StmtAST_1();
+    ast -> matchedstmt = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | UnmatchedStmt {
+    auto ast = new StmtAST_2();
+    ast -> unmatchedstmt = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  ;
+
+// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+MatchedStmt
+  : LVal '=' Exp ';' {
+    auto ast = new MatchedStmtAST_1();
     ast -> lval = unique_ptr<BaseAST>($1);
     ast -> exp = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
   | RETURN Exp ';' {
-    auto ast = new StmtAST_2();
+    auto ast = new MatchedStmtAST_2();
     ast -> exp = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
   | RETURN ';' {
-    auto ast = new StmtAST_2();
+    auto ast = new MatchedStmtAST_2();
     ast -> exp = unique_ptr<BaseAST>(nullptr);
     $$ = ast;
   }
   | Exp ';' {
-    auto ast = new StmtAST_3();
+    auto ast = new MatchedStmtAST_3();
     ast -> exp = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
   | ';' {
-    auto ast = new StmtAST_3();
+    auto ast = new MatchedStmtAST_3();
     ast -> exp = unique_ptr<BaseAST>(nullptr);
     $$ = ast;
   }
   | Block {
-    auto ast = new StmtAST_4();
+    auto ast = new MatchedStmtAST_4();
     ast -> block = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | IF '(' Exp ')' MatchedStmt ELSE MatchedStmt {
+    auto ast = new MatchedStmtAST_5();
+    ast -> exp = unique_ptr<BaseAST>($3);
+    ast -> matchedstmt1 = unique_ptr<BaseAST>($5);
+    ast -> matchedstmt2 = unique_ptr<BaseAST>($7);
+    $$ = ast;
+  }
+  ;
+
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+UnmatchedStmt
+  : IF '(' Exp ')' Stmt {
+    auto ast = new UnmatchedStmtAST_1();
+    ast -> exp = unique_ptr<BaseAST>($3);
+    ast -> stmt = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  | IF '(' Exp ')' MatchedStmt ELSE UnmatchedStmt {
+    auto ast = new UnmatchedStmtAST_2();
+    ast -> exp = unique_ptr<BaseAST>($3);
+    ast -> matchedstmt = unique_ptr<BaseAST>($5);
+    ast -> unmatchedstmt = unique_ptr<BaseAST>($7);
     $$ = ast;
   }
   ;
