@@ -89,13 +89,27 @@ void Visitor_ast::ir_init(FuncDefAST& func_def) {
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = "%entry";
 
-    // 更新 then-else-end 的组数，和 return 的组数
-    this -> block_num = 1;
+    // 初始化 then-else-end 的组数，和 return 的组数
+    this -> branch_num = 1;
     this -> return_num = 1;
+    // 初始化短路求值的状态
+    this -> sub_exp = 1;
+    this -> and_sce = 1;
+    this -> and_exit = 1;
+    this -> or_sce = 1;
+    this -> or_exit = 1;
+
+    // 定义存放短路求值结果的局部变量
+    ValueIR_3* value = new ValueIR_3();
+    value -> opcode = "alloc";
+    value -> operand = "i32";
+    value -> target = this -> sce_var;
+    (this -> basic_block -> values).push_back(value);
 
     func_def.block.get() -> accept(*this);
     // 现在 push 基本块的地方有很多了， FuncDefAST 这里暂时不需要了
     // (function -> basic_blocks).push_back(this -> basic_block);
+
     return;
 }
 
@@ -186,10 +200,10 @@ void Visitor_ast::ir_init(MatchedStmtAST_5& matched_stmt) {
     this->lval_mode = START;
 
     // 准备 br 跳转指令
-    std::string then_block = "%then_" + std::to_string(this->block_num);
-    std::string else_block = "%else_" + std::to_string(this->block_num);
-    std::string end_block = "%end_" + std::to_string(this->block_num);
-    this->block_num++;
+    std::string then_block = "%then_" + std::to_string(this->branch_num);
+    std::string else_block = "%else_" + std::to_string(this->branch_num);
+    std::string end_block = "%end_" + std::to_string(this->branch_num);
+    this->branch_num++;
 
     ValueIR_5* value1 = new ValueIR_5();
     value1 -> opcode = "br";
@@ -232,9 +246,9 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_1& unmatched_stmt) {
     this->lval_mode = START;
 
     // 准备基本块名字
-    std::string then_block = "%then_" + std::to_string(this->block_num);
-    std::string end_block = "%end_" + std::to_string(this->block_num);
-    this->block_num++;
+    std::string then_block = "%then_" + std::to_string(this->branch_num);
+    std::string end_block = "%end_" + std::to_string(this->branch_num);
+    this->branch_num++;
 
     // 准备 br 指令
     ValueIR_5* value1 = new ValueIR_5();
@@ -266,10 +280,10 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_2& unmatched_stmt) {
     this->lval_mode = START;
 
     // 准备基本块名字
-    std::string then_block = "%then_" + std::to_string(this->block_num);
-    std::string else_block = "%else_" + std::to_string(this->block_num);
-    std::string end_block = "%end_" + std::to_string(this->block_num);
-    this->block_num++;
+    std::string then_block = "%then_" + std::to_string(this->branch_num);
+    std::string else_block = "%else_" + std::to_string(this->branch_num);
+    std::string end_block = "%end_" + std::to_string(this->branch_num);
+    this->branch_num++;
 
     // 准备 br 指令
     ValueIR_5* value1 = new ValueIR_5();
@@ -308,6 +322,52 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_2& unmatched_stmt) {
 
 void Visitor_ast::ir_init(ExpAST& exp) {
     exp.lorexp.get() -> accept(*this);
+
+    if (dynamic_cast<LOrExpAST_2*>(exp.lorexp.get())) { // 给 LOrExpAST_2 善后
+        // 先把 or 最后一块 sub_exp 补完
+        // 最终计算结果放到 sce_result 中
+        ValueIR_4* value1 = new ValueIR_4();
+        value1 -> opcode = "store";
+        value1 -> operand1 = (this->stk).top();
+        (this->stk).pop();
+        value1 -> operand2 = this -> sce_var;
+        (this -> basic_block -> values).push_back(value1);
+        // jump 到最终块
+        ValueIR_1* value2 = new ValueIR_1();
+        value2 -> opcode = "jump";
+        value2 -> operand = "%or_exit_" + std::to_string(this->or_exit);
+        (this -> basic_block -> values).push_back(value2);
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        // 短路求值的块
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%or_sce_" + std::to_string(this->or_sce++);
+        // 把结果 0 放到 sce_result 中
+        ValueIR_4* value3 = new ValueIR_4();
+        value3 -> opcode = "store";
+        value3 -> operand1 = "1";
+        value3 -> operand2 = this -> sce_var;
+        (this -> basic_block -> values).push_back(value3);
+        // jump 到最终块
+        ValueIR_1* value4 = new ValueIR_1();
+        value4 -> opcode = "jump";
+        value4 -> operand = "%or_exit_" + std::to_string(this->or_exit);
+        (this -> basic_block -> values).push_back(value4);
+        // 把块放入函数
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        // 最终的块
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%or_exit_" + std::to_string(this->or_exit++);
+        // 把 sce_result 加载到新的临时符号中
+        ValueIR_3* value5 = new ValueIR_3();
+        value5 -> opcode = "load";
+        value5 -> operand = this -> sce_var;
+        value5 -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this -> basic_block -> values).push_back(value5);
+        (this->stk).push(value5 -> target);
+    }
+
     return;
 }
 
@@ -547,85 +607,203 @@ void Visitor_ast::ir_init(LAndExpAST_1& l_and_exp) {
     l_and_exp.eqexp.get() -> accept(*this);
     return;
 }
-
 void Visitor_ast::ir_init(LAndExpAST_2& l_and_exp) {
-    l_and_exp.eqexp.get() -> accept(*this);
+    // 先计算左边
     l_and_exp.landexp.get() -> accept(*this);
+    // 此时结果放在 stk 顶
+
+    // br 指令
+    ValueIR_5* value1 = new ValueIR_5();
+    value1 -> opcode = "br";
+    value1 -> operand1 = (this->stk).top();
+    value1 -> operand2 = "%sub_exp_" + std::to_string(this->sub_exp);
+    value1 -> operand3 = "%and_sce_" + std::to_string(this->and_sce);
+    (this -> basic_block -> values).push_back(value1);
+    // 建立下一个基本块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = "%sub_exp_" + std::to_string(this->sub_exp++);
+
+    // 计算右边
+    l_and_exp.eqexp.get() -> accept(*this);
 
     // 第一个 ne 指令
-    ValueIR_2* value1 = new ValueIR_2();
-    value1 -> opcode = "ne";
-    value1 -> operand1 = (this->stk).top();
-    (this->stk).pop();
-    value1 -> operand2 = "0";
-    value1 -> target = "%" + std::to_string(this->tmp_symbol);
-    this->tmp_symbol++;
-    (this->basic_block -> values).push_back(value1);
-
-    // 第二个 ne 指令
     ValueIR_2* value2 = new ValueIR_2();
     value2 -> opcode = "ne";
     value2 -> operand1 = (this->stk).top();
     (this->stk).pop();
     value2 -> operand2 = "0";
-    value2 -> target = "%" + std::to_string(this->tmp_symbol);
-    this->tmp_symbol++;
-    (this->basic_block -> values).push_back(value2);
+    value2 -> target = "%" + std::to_string(this->tmp_symbol++);
+    (this -> basic_block -> values).push_back(value2);
 
-    // 最后才是按位 and 指令
+    // 第二个 ne 指令
     ValueIR_2* value3 = new ValueIR_2();
-    value3 -> opcode = "and";
-    value3 -> operand1 = value1 -> target;
-    value3 -> operand2 = value2 -> target;
-    value3 -> target = "%" + std::to_string(this->tmp_symbol);
+    value3 -> opcode = "ne";
+    value3 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value3 -> operand2 = "0";
+    value3 -> target = "%" + std::to_string(this->tmp_symbol++);
+    (this -> basic_block -> values).push_back(value3);
 
-    (this->stk).push(value3 -> target);
-    this->tmp_symbol++;
+    // 最后按位 and 
+    ValueIR_2* value4 = new ValueIR_2();
+    value4 -> opcode = "and";
+    value4 -> operand1 = value2 -> target;
+    value4 -> operand2 = value3 -> target;
+    value4 -> target = "%" + std::to_string(this->tmp_symbol++);
+    (this -> basic_block -> values).push_back(value4);
+    // 结果放入 stk
+    (this->stk).push(value4 -> target);
 
-    (this->basic_block -> values).push_back(value3);
     return;
 }
 
 void Visitor_ast::ir_init(LOrExpAST_1& l_or_exp) {
     l_or_exp.landexp.get() -> accept(*this);
+    if (dynamic_cast<LAndExpAST_2*>(l_or_exp.landexp.get())) {
+        // 原本是没有这些的，但是 LAndExpAST_2 短路求值的后半部分加在了这里
+        // 先把 and 最后一块 sub_exp 补完
+        // 最终计算结果放到 sce_result 中
+        ValueIR_4* value1 = new ValueIR_4();
+        value1 -> opcode = "store";
+        value1 -> operand1 = (this->stk).top();
+        (this->stk).pop();
+        value1 -> operand2 = this -> sce_var;
+        (this -> basic_block -> values).push_back(value1);
+        // jump 到最终块
+        ValueIR_1* value2 = new ValueIR_1();
+        value2 -> opcode = "jump";
+        value2 -> operand = "%and_exit_" + std::to_string(this->and_exit);
+        (this -> basic_block -> values).push_back(value2);
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        // 短路求值的块
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%and_sce_" + std::to_string(this->and_sce++);
+        // 把结果 0 放到 sce_result 中
+        ValueIR_4* value3 = new ValueIR_4();
+        value3 -> opcode = "store";
+        value3 -> operand1 = "0";
+        value3 -> operand2 = this -> sce_var;
+        (this -> basic_block -> values).push_back(value3);
+        // jump 到最终块
+        ValueIR_1* value4 = new ValueIR_1();
+        value4 -> opcode = "jump";
+        value4 -> operand = "%and_exit_" + std::to_string(this->and_exit);
+        (this -> basic_block -> values).push_back(value4);
+        // 把块放入函数
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        // 最终的块
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%and_exit_" + std::to_string(this->and_exit++);
+        // 把 sce_result 加载到新的临时符号中
+        ValueIR_3* value5 = new ValueIR_3();
+        value5 -> opcode = "load";
+        value5 -> operand = this -> sce_var;
+        value5 -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this -> basic_block -> values).push_back(value5);
+        (this->stk).push(value5 -> target);
+    }
+ 
     return;
 }
-
 void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
-    l_or_exp.landexp.get() -> accept(*this);
+    // 先执行左边
     l_or_exp.lorexp.get() -> accept(*this);
-
-    // 第一个 ne 指令
-    ValueIR_2* value1 = new ValueIR_2();
-    value1 -> opcode = "ne";
+    // 此时结果放在 stk 顶
+    
+    // 开始处理 || 的短路求值
+    // br 指令
+    ValueIR_5* value1 = new ValueIR_5();
+    value1 -> opcode = "br";
     value1 -> operand1 = (this->stk).top();
+    value1 -> operand2 = "%or_sce_" + std::to_string(this->or_sce);
+    value1 -> operand3 = "%sub_exp_" + std::to_string(this->sub_exp);
+    (this -> basic_block -> values).push_back(value1);
+    // 建立下一个基本块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = "%sub_exp_" + std::to_string(this->sub_exp++);
+
+    // 执行右边
+    l_or_exp.landexp.get() -> accept(*this);
+    // 此时结果在 stk 顶
+    if (dynamic_cast<LAndExpAST_2*>(l_or_exp.landexp.get())) {
+        // 为有短路求值的 LAndExpAST_2 善后
+        // 补上 and 最后一个 sub_exp 块
+        // 把最终计算结果放到 sce_result 中
+        ValueIR_4* value2 = new ValueIR_4();
+        value2 -> opcode = "store";
+        value2 -> operand1 = (this->stk).top();
+        (this->stk).pop();
+        value2 -> operand2 = this -> sce_var;
+        (this -> basic_block -> values).push_back(value2);
+        // jump 到最终块
+        ValueIR_1* value3 = new ValueIR_1();
+        value3 -> opcode = "jump";
+        value3 -> operand = "%and_exit_" + std::to_string(this->and_exit);
+        (this -> basic_block -> values).push_back(value3);
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        // 短路求值的块
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%and_sce_" + std::to_string(this->and_sce++);
+        // 把结果 0 放到 sce_result 中
+        ValueIR_4* value4 = new ValueIR_4();
+        value4 -> opcode = "store";
+        value4 -> operand1 = "0";
+        value4 -> operand2 = this -> sce_var;
+        (this -> basic_block -> values).push_back(value4);
+        // jump 到最终块
+        ValueIR_1* value5 = new ValueIR_1();
+        value5 -> opcode = "jump";
+        value5 -> operand = "%and_exit_" + std::to_string(this->and_exit);
+        (this -> basic_block -> values).push_back(value5);
+        // 把块放入函数
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        // 最终的块
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%and_exit_" + std::to_string(this->and_exit++);
+        // 把 sce_result 加载到新的临时符号中
+        ValueIR_3* value6 = new ValueIR_3();
+        value6 -> opcode = "load";
+        value6 -> operand = this -> sce_var;
+        value6 -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this -> basic_block -> values).push_back(value6);
+        (this->stk).push(value6 -> target);
+    }
+
+    // 然后是常规的 2 个 ne 一个 or
+    // 第一个 ne 指令
+    ValueIR_2* value7 = new ValueIR_2();
+    value7 -> opcode = "ne";
+    value7 -> operand1 = (this->stk).top();
     (this->stk).pop();
-    value1 -> operand2 = "0";
-    value1 -> target = "%" + std::to_string(this->tmp_symbol);
-    this->tmp_symbol++;
-    (this->basic_block -> values).push_back(value1);
+    value7 -> operand2 = "0";
+    value7 -> target = "%" + std::to_string(this->tmp_symbol++);
+    (this->basic_block -> values).push_back(value7);
 
     // 第二个 ne 指令
-    ValueIR_2* value2 = new ValueIR_2();
-    value2 -> opcode = "ne";
-    value2 -> operand1 = (this->stk).top();
+    ValueIR_2* value8 = new ValueIR_2();
+    value8 -> opcode = "ne";
+    value8 -> operand1 = (this->stk).top();
     (this->stk).pop();
-    value2 -> operand2 = "0";
-    value2 -> target = "%" + std::to_string(this->tmp_symbol);
-    this->tmp_symbol++;
-    (this->basic_block -> values).push_back(value2);
+    value8 -> operand2 = "0";
+    value8 -> target = "%" + std::to_string(this->tmp_symbol++);
+    (this->basic_block -> values).push_back(value8);
 
-    // 最后才是按位 or 指令
-    ValueIR_2* value3 = new ValueIR_2();
-    value3 -> opcode = "or";
-    value3 -> operand1 = value1 -> target;
-    value3 -> operand2 = value2 -> target;
-    value3 -> target = "%" + std::to_string(this->tmp_symbol);
+    // 最后是按位 or 指令
+    ValueIR_2* value9 = new ValueIR_2();
+    value9 -> opcode = "or";
+    value9 -> operand1 = value7 -> target;
+    value9 -> operand2 = value8 -> target;
+    value9 -> target = "%" + std::to_string(this->tmp_symbol++);
+    (this -> basic_block -> values).push_back(value9);
+    // 结果入栈
+    (this->stk).push(value9 -> target);
 
-    (this->stk).push(value3 -> target);
-    this->tmp_symbol++;
-
-    (this->basic_block -> values).push_back(value3);
     return;
 }
 

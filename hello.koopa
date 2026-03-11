@@ -1,13 +1,37 @@
 fun @main(): i32 {
 %entry:
-  br 1, %then_1, %end_1
+  @sce_result = alloc i32
+  @a_1 = alloc i32
+  br 1, %or_sce_1, %sub_exp_1
 
-%then_1:
-  ret 1
+%sub_exp_1:
+  br 2, %sub_exp_2, %and_sce_1
 
-%return_1:
-  jump %end_1
+%sub_exp_2:
+  %0 = ne 3, 0
+  %1 = ne 2, 0
+  %2 = and %0, %1
+  store %2, @sce_result
+  jump %and_exit_1
 
-%end_1:
+%and_sce_1:
+  store 0, @sce_result
+  jump %and_exit_1
+
+%and_exit_1:
+  %3 = load @sce_result
+  %4 = ne %3, 0
+  %5 = ne 1, 0
+  %6 = or %4, %5
+  store %6, @sce_result
+  jump %or_exit_1
+
+%or_sce_1:
+  store 1, @sce_result
+  jump %or_exit_1
+
+%or_exit_1:
+  %7 = load @sce_result
+  store %7, @a_1
   ret 0
 }

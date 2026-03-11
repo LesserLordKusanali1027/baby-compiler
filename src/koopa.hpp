@@ -260,7 +260,6 @@ class ValueIR_5 : public BaseIR {
 enum LVal_Mode { START = 0, LOAD, STORE };
 
 // CompUnit      ::= FuncDef;
-
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
 // BType         ::= "int";
@@ -313,9 +312,16 @@ class Visitor_ast {
     LVal_Mode lval_mode = START;
     
     // 基本块名字相关内容
-    int block_num; // 记录 then-else-end 该用第几组了
+    // 记录 then-else-end 该用第几组了
+    int branch_num;
     // 记录 return 是第几组了
     int return_num;
+
+    // 短路求值相关状态量
+    int sub_exp, and_sce, and_exit, or_sce, or_exit;
+    // 短路求值结果变量，可能埋了个雷，由于绕过了语义分析，之后可能出现命名冲突
+    // 后续或许可以定义成全局变量？
+    std::string sce_var = "@sce_result";
   
   public:
     void ir_init(CompUnitAST& comp_unit);

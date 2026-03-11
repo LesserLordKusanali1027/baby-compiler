@@ -1,4 +1,4 @@
 int main() {
-  if (1) return 1;
-  return 0;
+    int a = 1 || 2 && 3;
+    return 0;
 }
