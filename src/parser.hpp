@@ -427,7 +427,6 @@ class BlockItemAST_2 : public BaseAST {
     }
 };
 
-// Stmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
 // Stmt ::= MatchedStmt | UnmatchedStmt;
 class StmtAST_1 : public BaseAST {
   public:
@@ -466,7 +465,8 @@ class StmtAST_2 : public BaseAST {
     }
 };
 
-// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | 
+// "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt | "break" ";" | "continue" ";";
 class MatchedStmtAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> lval;
@@ -562,6 +562,55 @@ class MatchedStmtAST_5 : public BaseAST {
         std::cout << ", else, ";
         matchedstmt2 -> Dump();
         std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class MatchedStmtAST_6 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseAST> stmt;
+
+    void Dump() const override {
+        std::cout << "MatchedStmtAST { while, ";
+        exp -> Dump();
+        std::cout << ", ";
+        stmt -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class MatchedStmtAST_7 : public BaseAST {  // break
+  public:
+    void Dump() const override {
+        std::cout << "MatchedStmtAST { break }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class MatchedStmtAST_8 : public BaseAST {  // continue
+  public:
+    void Dump() const override {
+        std::cout << "MatchedStmtAST { continue }";
     }
 
     void accept(Visitor_ast& visitor) override {

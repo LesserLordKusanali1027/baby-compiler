@@ -1,4 +1,5 @@
 int main() {
-    int a = 1 || 2 && 3;
+    while (1) 
+        break;
     return 0;
 }

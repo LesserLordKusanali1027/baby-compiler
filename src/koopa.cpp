@@ -98,6 +98,8 @@ void Visitor_ast::ir_init(FuncDefAST& func_def) {
     this -> and_exit = 1;
     this -> or_sce = 1;
     this -> or_exit = 1;
+    // 初始化 while 状态
+    this -> while_num = 1;
 
     // 定义存放短路求值结果的局部变量
     ValueIR_3* value = new ValueIR_3();
@@ -237,6 +239,96 @@ void Visitor_ast::ir_init(MatchedStmtAST_5& matched_stmt) {
     (function -> basic_blocks).push_back(this -> basic_block);
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = end_block;
+}
+void Visitor_ast::ir_init(MatchedStmtAST_6& matched_stmt) {
+    // 准备基本块
+    std::string entry_block = "%while_entry_" + std::to_string(this->while_num);
+    std::string body_block = "%while_body_" + std::to_string(this->while_num);
+    std::string end_block = "%while_end_" + std::to_string(this->while_num);
+    (this->while_stk).push(this->while_num); // 记录下各层 while 的标签编号
+    this->while_num++;
+    
+    // 当前块最后的指令：jump 到 while_entry
+    ValueIR_1* value1 = new ValueIR_1();
+    value1 -> opcode = "jump";
+    value1 -> operand = entry_block;
+    (this -> basic_block -> values).push_back(value1);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // while_entry 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = entry_block;
+    // exp，返回后结果放在了栈顶
+    this->lval_mode = LOAD;
+    matched_stmt.exp.get() -> accept(*this);
+    this->lval_mode = START;
+    // br 指令
+    ValueIR_5* value2 = new ValueIR_5();
+    value2 -> opcode = "br";
+    value2 -> operand1 = (this->stk).top();
+    (this->stk).pop();
+    value2 -> operand2 = body_block;
+    value2 -> operand3 = end_block;
+    (this -> basic_block -> values).push_back(value2);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // while_body 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = body_block;
+    // stmt
+    matched_stmt.stmt.get() -> accept(*this);
+    // jump 到 while_entry
+    ValueIR_1* value3 = new ValueIR_1();
+    value3 -> opcode = "jump";
+    value3 -> operand = entry_block;
+    (this -> basic_block -> values).push_back(value3);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // while_end 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = end_block;
+
+    // pop 掉当前 while 的标签编号
+    (this->while_stk).pop();
+
+    return;
+}
+void Visitor_ast::ir_init(MatchedStmtAST_7& matched_stmt) { // break
+    // 要跳转的 while_end 标签的编号
+    int tmp_num = (this->while_stk).top();
+
+    ValueIR_1* value = new ValueIR_1();
+    value -> opcode = "jump";
+    value -> operand = "%while_end_" + std::to_string(tmp_num);
+    (this -> basic_block -> values).push_back(value);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // 新建下一个 while_body 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = "%while_body_" + std::to_string(this->while_num++);
+
+    return;
+}
+void Visitor_ast::ir_init(MatchedStmtAST_8& matched_stmt) { // continue
+    // 要跳转的 while_entry 标签的编号
+    int tmp_num = (this->while_stk).top();
+
+    ValueIR_1* value = new ValueIR_1();
+    value -> opcode = "jump";
+    value -> operand = "%while_entry_" + std::to_string(tmp_num);
+    (this -> basic_block -> values).push_back(value);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // 新建下一个 while_body 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = "%while_body_" + std::to_string(this->while_num++);
+
+    return;
 }
 
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;

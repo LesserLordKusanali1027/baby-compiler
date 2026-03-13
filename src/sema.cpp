@@ -147,6 +147,28 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_5& matched_stmt) {
     matched_stmt.matchedstmt1.get() -> accept(*this);
     matched_stmt.matchedstmt2.get() -> accept(*this);
 }
+void Visitor_sema::sema_analysis(MatchedStmtAST_6& matched_stmt) {
+    this->error_mode = UNDF;
+    matched_stmt.exp.get() -> accept(*this);
+    this->error_mode = NONE;
+
+    // 为了确保 break 和 continue 位于 while 中，否则语义错误
+    this->while_levels++;
+    matched_stmt.stmt.get() -> accept(*this);
+    this->while_levels--;
+}
+void Visitor_sema::sema_analysis(MatchedStmtAST_7& matched_stmt) { // break
+    if (this->while_levels <= 0) {
+        std::cout << "Semantic analysis failed: 'break' must be used in the while loop here.\n";
+        exit(-1); 
+    }
+}
+void Visitor_sema::sema_analysis(MatchedStmtAST_8& matched_stmt) { // continue
+    if (this->while_levels <= 0) {
+        std::cout << "Semantic analysis continue: 'break' must be used in the while loop here.\n";
+        exit(-1); 
+    }
+}
 
 void Visitor_sema::sema_analysis(UnmatchedStmtAST_1& unmatched_stmt) {
     this->error_mode = UNDF;

@@ -40,7 +40,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN GE LE EQ NE AND OR CONST IF ELSE
+%token INT RETURN GE LE EQ NE AND OR CONST IF ELSE WHILE BREAK CONTINUE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
@@ -261,7 +261,7 @@ Stmt
   }
   ;
 
-// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt | "break" ";" | "continue" ";";
 MatchedStmt
   : LVal '=' Exp ';' {
     auto ast = new MatchedStmtAST_1();
@@ -299,6 +299,20 @@ MatchedStmt
     ast -> exp = unique_ptr<BaseAST>($3);
     ast -> matchedstmt1 = unique_ptr<BaseAST>($5);
     ast -> matchedstmt2 = unique_ptr<BaseAST>($7);
+    $$ = ast;
+  }
+  | WHILE '(' Exp ')' Stmt {
+    auto ast = new MatchedStmtAST_6();
+    ast -> exp = unique_ptr<BaseAST>($3);
+    ast -> stmt = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  | BREAK ';' {
+    auto ast = new MatchedStmtAST_7();
+    $$ = ast;
+  }
+  | CONTINUE ';' {
+    auto ast = new MatchedStmtAST_8();
     $$ = ast;
   }
   ;

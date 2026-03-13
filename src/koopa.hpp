@@ -36,6 +36,9 @@ class MatchedStmtAST_2;
 class MatchedStmtAST_3;
 class MatchedStmtAST_4;
 class MatchedStmtAST_5;
+class MatchedStmtAST_6;
+class MatchedStmtAST_7;
+class MatchedStmtAST_8;
 class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
 class ExpAST;
@@ -277,7 +280,7 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // BlockItemList ::= %empty | BlockItemList BlockItem
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt | "break" ";" | "continue" ";";
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT;
@@ -311,7 +314,7 @@ class Visitor_ast {
     // 进入 LVal 后有两种模式，load 或 store
     LVal_Mode lval_mode = START;
     
-    // 基本块名字相关内容
+    // 分支语句基本块名字相关信息
     // 记录 then-else-end 该用第几组了
     int branch_num;
     // 记录 return 是第几组了
@@ -322,6 +325,12 @@ class Visitor_ast {
     // 短路求值结果变量，可能埋了个雷，由于绕过了语义分析，之后可能出现命名冲突
     // 后续或许可以定义成全局变量？
     std::string sce_var = "@sce_result";
+
+    // while 循环语句相关信息
+    // 记录 while 的 entry-body-end 该用第几组了，现在 break、continue 跳转后新建块也用这个
+    int while_num;
+    // 记录各层 while 循环使用的标签的序号，用于为 break、continue 提供跳转目标
+    std::stack<int> while_stk;
   
   public:
     void ir_init(CompUnitAST& comp_unit);
@@ -351,6 +360,9 @@ class Visitor_ast {
     void ir_init(MatchedStmtAST_3& matched_stmt);
     void ir_init(MatchedStmtAST_4& matched_stmt);
     void ir_init(MatchedStmtAST_5& matched_stmt);
+    void ir_init(MatchedStmtAST_6& matched_stmt);
+    void ir_init(MatchedStmtAST_7& matched_stmt);
+    void ir_init(MatchedStmtAST_8& matched_stmt);
     void ir_init(UnmatchedStmtAST_1& unmatched_stmt);
     void ir_init(UnmatchedStmtAST_2& unmatched_stmt);
     void ir_init(ExpAST& exp);

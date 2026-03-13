@@ -36,6 +36,9 @@ class MatchedStmtAST_2;
 class MatchedStmtAST_3;
 class MatchedStmtAST_4;
 class MatchedStmtAST_5;
+class MatchedStmtAST_6;
+class MatchedStmtAST_7;
+class MatchedStmtAST_8;
 class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
 class ExpAST;
@@ -214,7 +217,7 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // BlockItemList ::= %empty | BlockItemList BlockItem
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT;
@@ -240,6 +243,8 @@ class Visitor_sema {
     bool cal_mode = false; // 计算模式是否开启
     Mode error_mode = NONE; // 报错检测模式
     bool if_fold = false; // 是否常量折叠
+    // 表明 while 循环的嵌套层数，0 表示不在 while 中
+    int while_levels = 0;
 
   public:
     // 以下函数用来遍历语法树生成符号表，并将 LValAST 替换成 NumberAST
@@ -271,6 +276,9 @@ class Visitor_sema {
     void sema_analysis(MatchedStmtAST_3& matched_stmt);
     void sema_analysis(MatchedStmtAST_4& matched_stmt);
     void sema_analysis(MatchedStmtAST_5& matched_stmt);
+    void sema_analysis(MatchedStmtAST_6& matched_stmt);
+    void sema_analysis(MatchedStmtAST_7& matched_stmt);
+    void sema_analysis(MatchedStmtAST_8& matched_stmt);
     void sema_analysis(UnmatchedStmtAST_1& unmatched_stmt);
     void sema_analysis(UnmatchedStmtAST_2& unmatched_stmt);
     void sema_analysis(ExpAST& exp);
