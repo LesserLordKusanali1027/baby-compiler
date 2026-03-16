@@ -2,10 +2,19 @@
 # include "parser.hpp"
 # include "sema.hpp"
 
+// CompUnit      ::= CompUnitList;
 void Visitor_sema::sema_analysis(CompUnitAST& comp_unit) {
-    comp_unit.func_def.get() -> accept(*this);
+    comp_unit.comp_unit_list.get() -> accept(*this);
 }
 
+// CompUnitList  ::= FuncDef | CompUnitList FuncDef;
+void Visitor_sema::sema_analysis(CompUnitListAST& comp_unit_list) {
+    for (int i = 0; i < comp_unit_list.func_defs.size(); i++) {
+        comp_unit_list.func_defs[i].get() -> accept(*this);
+    }
+}
+
+// Decl          ::= ConstDecl | VarDecl;
 void Visitor_sema::sema_analysis(DeclAST_1& decl) {
     decl.constdecl.get() -> accept(*this);
 }
@@ -13,16 +22,19 @@ void Visitor_sema::sema_analysis(DeclAST_2& decl) {
     decl.vardecl.get() -> accept(*this);
 }
 
+// ConstDecl     ::= "const" BType ConstDefList ";";
 void Visitor_sema::sema_analysis(ConstDeclAST& const_decl) {
     const_decl.constdeflist.get() -> accept(*this);
 }
 
+// ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
 void Visitor_sema::sema_analysis(ConstDefListAST& const_def_list) {
     for (int i = 0; i < const_def_list.constdefs.size(); i++) {
         const_def_list.constdefs[i].get() -> accept(*this);
     }
 }
 
+// ConstDef      ::= IDENT "=" ConstInitVal;
 void Visitor_sema::sema_analysis(ConstDefAST& const_def) {
     if (symbol_table_stack.if_exist_last(const_def.ident)) {
         std::cout << "Semantic analysis failed: '" << const_def.ident << "' redefined.\n";
@@ -40,20 +52,24 @@ void Visitor_sema::sema_analysis(ConstDefAST& const_def) {
     this->error_mode = NONE;
 }
 
+// ConstInitVal  ::= ConstExp;
 void Visitor_sema::sema_analysis(ConstInitValAST& const_init_val) {
     const_init_val.constexp.get() -> accept(*this);
 }
 
+// VarDecl       ::= BType VarDefList ";";
 void Visitor_sema::sema_analysis(VarDeclAST& var_decl) {
     var_decl.vardeflist.get() -> accept(*this);
 }
 
+// VarDefList    ::= VarDef | VarDefList "," VarDef;
 void Visitor_sema::sema_analysis(VarDefListAST& var_def_list) {
     for (int i = 0; i < var_def_list.vardefs.size(); i++) {
         var_def_list.vardefs[i].get() -> accept(*this);
     }
 }
 
+// VarDef        ::= IDENT | IDENT "=" InitVal;
 void Visitor_sema::sema_analysis(VarDefAST_1& var_def) {
     if (symbol_table_stack.if_exist_last(var_def.ident)) {
         std::cout << "Semantic analysis failed: '" << var_def.ident << "' redefined.\n";
@@ -77,34 +93,89 @@ void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
     this->error_mode = UNDF;
 }
 
+// InitVal       ::= Exp;
 void Visitor_sema::sema_analysis(InitValAST& init_val) {
     init_val.exp.get() -> accept(*this);
 }
 
+// FuncDef     ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
 void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
+    // 函数名相关操作
+    // 判断是否重复定义
+    if (func_table.if_exist(func_def.ident)) {
+        std::cout << "Semantic analysis failed: function '" << func_def.ident << "' is redefined.\n";
+        exit(-1);
+    }
+    // 记下函数名，并将函数名加入表
+    this -> func_name = func_def.ident;
+    func_table.add_func(this -> func_name);
+
+    // 为变量/常量符号表加一层
+    symbol_table_stack.push_table();
+
+    // 加入返回值
+    func_def.func_type.get() -> accept(*this);
+
+    // 加入参数
+    if (func_def.func_f_param_list)
+        func_def.func_f_param_list.get() -> accept(*this);
+
+    // 正式进入语句块
     func_def.block.get() -> accept(*this);
+
+    // 离开前去掉
+    symbol_table_stack.pop_table();
 }
 
+// FuncType      ::= "int" | "void";
+void Visitor_sema::sema_analysis(FuncTypeAST& func_type) {
+    func_table.add_type(this->func_name, func_type.func_type);
+}
+
+// FuncFParamList ::= FuncFParam | FuncFParamList "," FuncFParam;
+void Visitor_sema::sema_analysis(FuncFParamListAST& func_f_param_list) {
+    for (int i = 0; i < func_f_param_list.func_f_params.size(); i++) {
+        func_table.add_param(this->func_name);
+        func_f_param_list.func_f_params[i].get() -> accept(*this);
+    }
+}
+
+// FuncFParam  ::= BType IDENT;
+void Visitor_sema::sema_analysis(FuncFParamAST& func_f_param) {
+    if (symbol_table_stack.if_exist_last(func_f_param.ident)) {
+        std::cout << "Semantic analysis failed: '" << func_f_param.ident << "' redefined.\n";
+        exit(-1);
+    }
+
+    symbol_table_stack.add_var(func_f_param.ident);
+
+    // 为变量名做注释
+    func_f_param.ident = symbol_table_stack.get_var(func_f_param.ident);
+}
+
+// Block         ::= "{" BlockItemList "}";
 void Visitor_sema::sema_analysis(BlockAST& block) {
     symbol_table_stack.push_table();
     block.blockitemlist.get() -> accept(*this);
     symbol_table_stack.pop_table();
 }
 
+// BlockItemList ::= %empty | BlockItemList BlockItem
 void Visitor_sema::sema_analysis(BlockItemListAST& block_item_list) {
     for (int i = 0; i < block_item_list.blockitems.size(); i++) {
         block_item_list.blockitems[i].get() -> accept(*this);
     }
 }
 
+// BlockItem     ::= Decl | Stmt;
 void Visitor_sema::sema_analysis(BlockItemAST_1& block_item) {
     block_item.decl.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(BlockItemAST_2& block_item) {
     block_item.stmt.get() -> accept(*this);
 }
 
+// Stmt          ::= MatchedStmt | UnmatchedStmt
 // 进行了较大的改动
 void Visitor_sema::sema_analysis(StmtAST_1& stmt) {
     stmt.matchedstmt.get() -> accept(*this);
@@ -113,6 +184,7 @@ void Visitor_sema::sema_analysis(StmtAST_2& stmt) {
     stmt.unmatchedstmt.get() -> accept(*this);
 }
 
+// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // 复制了之前 Stmt 的四个函数
 void Visitor_sema::sema_analysis(MatchedStmtAST_1& matched_stmt) {
     this->error_mode = CONST_UNDF;
@@ -123,8 +195,16 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_1& matched_stmt) {
     this->error_mode = NONE;
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_2& matched_stmt) {
-    if (!matched_stmt.exp)
+    if (!matched_stmt.exp && !func_table.if_ret_int(this->func_name))
         return;
+    else if (!matched_stmt.exp && func_table.if_ret_int(this->func_name)) {
+        std::cout << "Semantic analysis failed: function '" << this->func_name << "' should return int.\n";
+        exit(-1);
+    }
+    else if (matched_stmt.exp && !func_table.if_ret_int(this->func_name)) {
+        std::cout << "Semantic analysis failed: function '" << this->func_name << "' should return nothing.\n";
+        exit(-1);
+    }
     this->error_mode = UNDF;
     matched_stmt.exp.get() -> accept(*this);
     this->error_mode = NONE;
@@ -170,6 +250,7 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_8& matched_stmt) { // continue
     }
 }
 
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 void Visitor_sema::sema_analysis(UnmatchedStmtAST_1& unmatched_stmt) {
     this->error_mode = UNDF;
     unmatched_stmt.exp.get() -> accept(*this);
@@ -186,10 +267,12 @@ void Visitor_sema::sema_analysis(UnmatchedStmtAST_2& unmatched_stmt) {
     unmatched_stmt.unmatchedstmt.get() -> accept(*this);
 }
 
+// Exp           ::= LOrExp;
 void Visitor_sema::sema_analysis(ExpAST& exp) {
     exp.lorexp.get() -> accept(*this);
 }
 
+// LVal          ::= IDENT;
 void Visitor_sema::sema_analysis(LValAST& lval) {
     // 先进行报错检测
     if (!symbol_table_stack.if_exist_all(lval.ident)) {
@@ -220,25 +303,26 @@ void Visitor_sema::sema_analysis(LValAST& lval) {
     }
 }
 
+// PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 void Visitor_sema::sema_analysis(PrimaryExpAST_1& primary_exp) {
     primary_exp.exp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(PrimaryExpAST_2& primary_exp) {
     this->num = 0;
     primary_exp.lval.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(PrimaryExpAST_3& primary_exp) {
     primary_exp.number.get() -> accept(*this);
 }
 
+// Number        ::= INT_CONST;
 void Visitor_sema::sema_analysis(NumberAST& number) {
     if (this->cal_mode) {
         stk.push(number.num);
     }
 }
 
+// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
 void Visitor_sema::sema_analysis(UnaryExpAST_1& unary_exp) {
     // 将 LVal 换成 Number 就在这里进行
     this->if_fold = false;
@@ -261,7 +345,6 @@ void Visitor_sema::sema_analysis(UnaryExpAST_1& unary_exp) {
     }
     this->if_fold = false;
 }
-
 void Visitor_sema::sema_analysis(UnaryExpAST_2& unary_exp) {
     // 从这里就要开始右序遍历了
     unary_exp.unaryexp.get() -> accept(*this);
@@ -285,16 +368,49 @@ void Visitor_sema::sema_analysis(UnaryExpAST_2& unary_exp) {
         }
     }
 }
+void Visitor_sema::sema_analysis(UnaryExpAST_3& unary_exp) {
+    // 检查函数名
+    if (!func_table.if_exist(unary_exp.ident)) {
+        std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' not defined.\n";
+        exit(-1);
+    }
 
+    if (unary_exp.func_r_param_list) {
+        this -> func_call = unary_exp.ident;
+        unary_exp.func_r_param_list.get() -> accept(*this);
+    }
+    else {
+        if (!func_table.judge_param(unary_exp.ident, 0)) {
+            std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' parameter not match when called.\n";
+            exit(-1);
+        }
+    }
+}
+
+// FuncRParamList ::= Exp | FuncRParamList "," Exp;
+void Visitor_sema::sema_analysis(FuncRParamListAST& func_r_param_list) {
+    if (!func_table.judge_param(this->func_call, func_r_param_list.func_r_params.size())) {
+        std::cout << "Semantic analysis failed: function '" << this->func_call << "' parameter not match when called.\n";
+        exit(-1);
+    }
+
+    this->error_mode = UNDF;
+    for (int i = 0; i < func_r_param_list.func_r_params.size(); i++) {
+        func_r_param_list.func_r_params[i].get() -> accept(*this);
+    }
+    this->error_mode = NONE;
+}
+
+// UnaryOp     ::= "+" | "-" | "!";
 void Visitor_sema::sema_analysis(UnaryOpAST& unary_op) {
     if (this->cal_mode)
         this->ch = unary_op.ch;
 }
 
+// MulExp      ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
 void Visitor_sema::sema_analysis(MulExpAST_1& mul_exp) {
     mul_exp.unaryexp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(MulExpAST_2& mul_exp) {
     mul_exp.unaryexp.get() -> accept(*this);
     mul_exp.mulexp.get() -> accept(*this);
@@ -320,10 +436,10 @@ void Visitor_sema::sema_analysis(MulExpAST_2& mul_exp) {
     }
 }
 
+// AddExp      ::= MulExp | AddExp ("+" | "-") MulExp;
 void Visitor_sema::sema_analysis(AddExpAST_1& add_exp) {
     add_exp.mulexp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(AddExpAST_2& add_exp) {
     add_exp.mulexp.get() -> accept(*this);
     add_exp.addexp.get() -> accept(*this);
@@ -346,10 +462,10 @@ void Visitor_sema::sema_analysis(AddExpAST_2& add_exp) {
     }
 }
 
+// RelExp      ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
 void Visitor_sema::sema_analysis(RelExpAST_1& rel_exp) {
     rel_exp.addexp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(RelExpAST_2& rel_exp) {
     rel_exp.addexp.get() -> accept(*this);
     rel_exp.relexp.get() -> accept(*this);
@@ -372,10 +488,10 @@ void Visitor_sema::sema_analysis(RelExpAST_2& rel_exp) {
     }
 }
 
+// EqExp       ::= RelExp | EqExp ("==" | "!=") RelExp;
 void Visitor_sema::sema_analysis(EqExpAST_1& eq_exp) {
     eq_exp.relexp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(EqExpAST_2& eq_exp) {
     eq_exp.relexp.get() -> accept(*this);
     eq_exp.eqexp.get() -> accept(*this);
@@ -394,10 +510,10 @@ void Visitor_sema::sema_analysis(EqExpAST_2& eq_exp) {
     }
 }
 
+// LAndExp     ::= EqExp | LAndExp "&&" EqExp;
 void Visitor_sema::sema_analysis(LAndExpAST_1& l_and_exp) {
     l_and_exp.eqexp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(LAndExpAST_2& l_and_exp) {
     l_and_exp.eqexp.get() -> accept(*this);
     l_and_exp.landexp.get() -> accept(*this);
@@ -413,10 +529,10 @@ void Visitor_sema::sema_analysis(LAndExpAST_2& l_and_exp) {
     }
 }
 
+// LOrExp      ::= LAndExp | LOrExp "||" LAndExp;
 void Visitor_sema::sema_analysis(LOrExpAST_1& l_or_exp) {
     l_or_exp.landexp.get() -> accept(*this);
 }
-
 void Visitor_sema::sema_analysis(LOrExpAST_2& l_or_exp) {
     l_or_exp.landexp.get() -> accept(*this);
     l_or_exp.lorexp.get() -> accept(*this);
@@ -432,6 +548,7 @@ void Visitor_sema::sema_analysis(LOrExpAST_2& l_or_exp) {
     }
 }
 
+// ConstExp      ::= Exp;
 void Visitor_sema::sema_analysis(ConstExpAST& const_exp) {
     const_exp.exp.get() -> accept(*this);
 }

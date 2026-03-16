@@ -5,11 +5,14 @@
 # include <iostream>
 # include <fstream>
 # include <stack>
+# include <unordered_map>
 # include "riscv.hpp"
 
 class BaseAST;
 
 class CompUnitAST;
+class CompUnitListAST;
+
 class DeclAST_1;
 class DeclAST_2;
 class ConstDeclAST;
@@ -25,6 +28,8 @@ class InitValAST;
 
 class FuncDefAST;
 class FuncTypeAST;
+class FuncFParamListAST;
+class FuncFParamAST;
 class BlockAST;
 class BlockItemListAST;
 class BlockItemAST_1;
@@ -49,6 +54,8 @@ class PrimaryExpAST_3;
 class NumberAST;
 class UnaryExpAST_1;
 class UnaryExpAST_2;
+class UnaryExpAST_3;
+class FuncRParamListAST;
 class UnaryOpAST;
 // 算术表达式
 class MulExpAST_1;
@@ -88,15 +95,21 @@ class ProgramIR : public BaseIR {
     void Dump() const override {
         for (int i = 0; i < globals.size(); i++)
             globals[i] -> Dump();
-        for (int i = 0; i < functions.size(); i++)
+        for (int i = 0; i < functions.size(); i++) {
             functions[i] -> Dump();
+            if (i != functions.size()-1)
+                std::cout << "\n\n";
+        }
     }
 
     void Dump_file(std::ofstream& file) override {
         for (int i = 0; i < globals.size(); i++)
             globals[i] -> Dump_file(file);
-        for (int i = 0; i < functions.size(); i++)
+        for (int i = 0; i < functions.size(); i++) {
             functions[i] -> Dump_file(file);
+            if (i != functions.size()-1)
+                file << "\n\n";
+        }
     }
 
     void accept(Visitor_ir& visitor) override {
@@ -108,10 +121,23 @@ class FunctionIR : public BaseIR {
   public:
     std::string name;
     std::string function_type;
+    std::vector<std::string> parameters;
     std::vector<BaseIR*> basic_blocks;
 
     void Dump() const override {
-        std::cout << "fun @" << name << "(): " << function_type << " {\n";
+        std::cout << "fun " << name << "(";
+        for (int i = 0; i < parameters.size(); i++) {
+            std::cout << parameters[i] << ": i32";
+            if (i != parameters.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << ") ";
+        
+        if (function_type == "int")
+            std::cout << ":i32 {\n";
+        else if (function_type == "void")
+            std::cout << " {\n";
+        
         for (int i = 0; i < basic_blocks.size(); i++) {
             basic_blocks[i] -> Dump();
             if (i != basic_blocks.size()-1)
@@ -121,7 +147,19 @@ class FunctionIR : public BaseIR {
     }
 
     void Dump_file(std::ofstream& file) override {
-        file << "fun @" << name << "(): " << function_type << " {\n";
+        file << "fun " << name << "(";
+        for (int i = 0; i < parameters.size(); i++) {
+            file << parameters[i] << ": i32";
+            if (i != parameters.size()-1)
+                file << ", ";
+        }
+        file << ") ";
+        
+        if (function_type == "int")
+            file << ":i32 {\n";
+        else if (function_type == "void")
+            file << " {\n";
+
         for (int i = 0; i < basic_blocks.size(); i++) {
             basic_blocks[i] -> Dump_file(file);
             if (i != basic_blocks.size()-1)
@@ -259,10 +297,75 @@ class ValueIR_5 : public BaseIR {
         visitor.riscv_get(*this);
     }
 };
+class ValueIR_6 : public BaseIR {
+    // 用来放 call
+  public:
+    std::string opcode;
+    std::string operand;
+    std::vector<std::string> parameters;
+    std::string target;
+
+    void Dump() const override {
+        if (!target.empty()) {
+            std::cout << "  " << target << " = ";
+            std::cout << opcode << " ";
+        }
+        else {
+            std::cout << "  " << opcode << " ";
+        }
+        std::cout << operand << "(";
+        for (int i = 0; i < parameters.size(); i++) {
+            std::cout << parameters[i];
+            if (i != parameters.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << ")\n";
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        if (!target.empty()) {
+            file << "  " << target << " = ";
+            file << opcode << " ";
+        }
+        else {
+            file << "  " << opcode << " ";
+        }
+        file << operand << "(";
+        for (int i = 0; i < parameters.size(); i++) {
+            file << parameters[i];
+            if (i != parameters.size()-1)
+                file << ", ";
+        }
+        file << ")\n";
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
+class ValueIR_7 : public BaseIR {
+    // 放 ret
+  public:
+    std::string opcode;
+
+    void Dump() const override {
+        std::cout << "  " << opcode << '\n';
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        file << "  " << opcode << '\n';
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
 
 enum LVal_Mode { START = 0, LOAD, STORE };
 
-// CompUnit      ::= FuncDef;
+// CompUnit      ::= CompUnitList;
+// CompUnitList  ::= FuncDef | CompUnitList FuncDef;
+
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
 // BType         ::= "int";
@@ -274,19 +377,22 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // VarDef        ::= IDENT | IDENT "=" InitVal;
 // InitVal       ::= Exp;
 
-// FuncDef       ::= FuncType IDENT "(" ")" Block;
-// FuncType      ::= "int";
+// FuncDef       ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
+// FuncType      ::= "int" | "void";
+// FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
+// FuncFParam    ::= BType IDENT;
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt | "break" ";" | "continue" ";";
+// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT;
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 // Number        ::= INT_CONST;
-// UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp;
+// UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
+// FuncRParamList::= Exp | FuncRParamList "," Exp;
 // UnaryOp       ::= "+" | "-" | "!";
 // MulExp        ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
 // AddExp        ::= MulExp | AddExp ("+" | "-") MulExp;
@@ -295,26 +401,27 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // LAndExp       ::= EqExp | LAndExp "&&" EqExp;
 // LOrExp        ::= LAndExp | LOrExp "||" LAndExp;
 // ConstExp      ::= Exp;
+
 // 定义 visitor 模式
 class Visitor_ast {
   public:
+    // 因为 ir_init 参数要统一，所以想要在各个节点之间传参协作，需要一些状态变量
     // 最后会将 program 指向构建的 Koopa IR
-    // 因为 ir_init 参数要统一，这里用来传参
     ProgramIR* program;
   private:
     FunctionIR* function;
     BasicBlockIR* basic_block;
 
-    // ir_init 返回值要统一，这里用来记录返回值
-    int tmp_symbol = 0;  // 临时符号，这种写法可能埋了个雷：基本块不能太长，否则 int 溢出
-    // int integer; 暂时用不到
+    // 表达式相关状态变量
+    int tmp_symbol;  // 临时符号，这种写法可能埋了个雷：函数不能太长，否则 int 溢出
+    // 传递计算符号
     char ch;
     // 算术表达式添加：需要一个栈来存放数值和临时符号
-    std::stack<std::string> stk;
+    std::stack<std::string> exp_stk;
     // 进入 LVal 后有两种模式，load 或 store
     LVal_Mode lval_mode = START;
     
-    // 分支语句基本块名字相关信息
+    // 分支语句基本块命名相关状态量
     // 记录 then-else-end 该用第几组了
     int branch_num;
     // 记录 return 是第几组了
@@ -326,14 +433,51 @@ class Visitor_ast {
     // 后续或许可以定义成全局变量？
     std::string sce_var = "@sce_result";
 
-    // while 循环语句相关信息
+    // while 循环语句相关状态变量
     // 记录 while 的 entry-body-end 该用第几组了，现在 break、continue 跳转后新建块也用这个
     int while_num;
     // 记录各层 while 循环使用的标签的序号，用于为 break、continue 提供跳转目标
     std::stack<int> while_stk;
+
+    // 函数相关状态变量
+    // 记录函数返回值类型
+    std::unordered_map<std::string, std::string> func_table;
+    // call 指令需要由 UnaryExpAST_3 和 FuncRParamListAST 共同完成，固需要一个状态变量
+    // 因为有函数嵌套，所以需要用栈记录
+    std::stack<BaseIR*> value_stk;
+    // 有了函数嵌套后，需要用栈来记录 lval_mode了
+    std::stack<LVal_Mode> lval_stk;
   
+    // 工具函数
+    void set_lval(LVal_Mode mode) {
+        lval_stk.push(lval_mode);
+        lval_mode = mode;
+    }
+    void recover_lval() {
+        lval_mode = lval_stk.top();
+        lval_stk.pop();
+    }
+    void init_states() { // 初始化一些状态变量
+        // 临时符号
+        tmp_symbol = 0;
+        // then-else-end 的组数
+        branch_num = 1;
+        // return 的组数
+        return_num = 1;
+        // 短路求值的状态
+        sub_exp = 1;
+        and_sce = 1;
+        and_exit = 1;
+        or_sce = 1;
+        or_exit = 1;
+        // while 状态
+        while_num = 1;
+    }
+
   public:
+    // 节点函数
     void ir_init(CompUnitAST& comp_unit);
+    void ir_init(CompUnitListAST& comp_unit_list);
     void ir_init(DeclAST_1& decl);
     void ir_init(DeclAST_2& decl);
     void ir_init(ConstDeclAST& const_decl);
@@ -349,6 +493,8 @@ class Visitor_ast {
 
     void ir_init(FuncDefAST& func_def);
     void ir_init(FuncTypeAST& func_type);
+    void ir_init(FuncFParamListAST& func_f_param_list);
+    void ir_init(FuncFParamAST& func_f_param);
     void ir_init(BlockAST& block);
     void ir_init(BlockItemListAST& block_item_list);
     void ir_init(BlockItemAST_1& block_item);
@@ -373,6 +519,8 @@ class Visitor_ast {
     void ir_init(NumberAST& number);
     void ir_init(UnaryExpAST_1& unary_exp);
     void ir_init(UnaryExpAST_2& unary_exp);
+    void ir_init(UnaryExpAST_3& unary_exp);
+    void ir_init(FuncRParamListAST& func_r_param_list);
     void ir_init(UnaryOpAST& unary_op);
     void ir_init(MulExpAST_1& mul_exp);
     void ir_init(MulExpAST_2& mul_exp);

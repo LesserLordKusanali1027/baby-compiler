@@ -8,7 +8,9 @@
 # include <vector>
 
 class BaseAST;
+
 class CompUnitAST;
+class CompUnitListAST;
 
 class DeclAST_1;
 class DeclAST_2;
@@ -25,6 +27,8 @@ class InitValAST;
 
 class FuncDefAST;
 class FuncTypeAST;
+class FuncFParamListAST;
+class FuncFParamAST;
 class BlockAST;
 class BlockItemListAST;
 class BlockItemAST_1;
@@ -49,6 +53,8 @@ class PrimaryExpAST_3;
 class NumberAST;
 class UnaryExpAST_1;
 class UnaryExpAST_2;
+class UnaryExpAST_3;
+class FuncRParamListAST;
 class UnaryOpAST;
 class MulExpAST_1;
 class MulExpAST_2;
@@ -64,7 +70,7 @@ class LOrExpAST_1;
 class LOrExpAST_2;
 class ConstExpAST;
 
-// 符号表类
+// 常量/变量符号表类
 class SymbolTable {
   public:
     using Value = std::variant<int, std::string>;
@@ -103,8 +109,7 @@ class SymbolTable {
         return std::get<std::string>(table[name]);
     }
 };
-
-// 多层符号表
+// 多层常量/变量符号表
 class SymbolTableStack {
   private:
     std::vector<SymbolTable*> table_stack;
@@ -195,10 +200,89 @@ class SymbolTableStack {
     }
 };
 
+
+// 记录函数信息的类
+class FunctionInfo {
+  private:
+    std::string func_type;
+    int params_count;
+
+  public:
+    FunctionInfo() {
+        params_count = 0;
+    }
+    // 存入返回值类型
+    void add_type(std::string& type) {
+        func_type = type;
+    }
+    // 加入参数
+    void add_param() {
+        params_count++;
+    }
+    
+    // 判断返回值类型
+    bool if_int() {
+        return func_type == "int";
+    }
+    bool if_void() {
+        return func_type == "void";
+    }
+
+    // 判断参数个数对不对，只需要比较个数，不需要比较具体类型，因为都是 int
+    bool judge_param(int size) {
+        return size == params_count;
+    }
+};
+// 函数符号表类 (全局单层)
+class FunctionTable {
+  private:
+    std::unordered_map<std::string, FunctionInfo*> table;
+
+  public:
+    ~FunctionTable() {
+        table.clear();
+    }
+
+    // 判断函数名有没有重复定义
+    bool if_exist(std::string& name) {
+        return (bool)table.count(name);
+    }
+    // 新增函数
+    void add_func(std::string& name) {
+        // 这里加一个保险，判断是否重复定义
+        if (table.count(name)) {
+            std::cout << "Function table has a mistake: function '" << name << "' is redefined, which is the developer's fault.\n";
+            exit(-1);
+        }
+
+        auto f_info = new FunctionInfo();
+        table[name] = f_info;
+    }
+    // 添加返回类型
+    void add_type(std::string& name, std::string& func_type) {
+        table[name] -> add_type(func_type);
+    }
+    // 添加参数
+    void add_param(std::string& name) {
+        table[name] -> add_param();
+    }
+
+    // 报错检测相关
+    // 判断参数是否匹配
+    bool judge_param(std::string& name, int size) {
+        return table[name] -> judge_param(size);
+    }
+    // 判断是否要有返回值，目前没用上
+    bool if_ret_int(std::string& name) {
+        return table[name] -> if_int();
+    }
+};
+
 // 定义枚举类型，用于设定检查模式
 enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 
-// CompUnit      ::= FuncDef;
+// CompUnit      ::= CompUnitList;
+// CompUnitList  ::= FuncDef | CompUnitList FuncDef;
 
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
@@ -211,8 +295,10 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // VarDef        ::= IDENT | IDENT "=" InitVal;
 // InitVal       ::= Exp;
 
-// FuncDef       ::= FuncType IDENT "(" ")" Block;
-// FuncType      ::= "int";
+// FuncDef       ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
+// FuncType      ::= "int" | "void";
+// FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
+// FuncFParam    ::= BType IDENT;
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem
 // BlockItem     ::= Decl | Stmt;
@@ -223,7 +309,8 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // LVal          ::= IDENT;
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 // Number        ::= INT_CONST;
-// UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp;
+// UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
+// FuncRParamList::= Exp | FuncRParamList "," Exp;
 // UnaryOp       ::= "+" | "-" | "!";
 // MulExp        ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
 // AddExp        ::= MulExp | AddExp ("+" | "-") MulExp;
@@ -245,10 +332,15 @@ class Visitor_sema {
     bool if_fold = false; // 是否常量折叠
     // 表明 while 循环的嵌套层数，0 表示不在 while 中
     int while_levels = 0;
+    // 函数相关
+    FunctionTable func_table; // 全局函数符号表
+    std::string func_name; // 当前所在函数的名字
+    std::string func_call; // 仅用来判断函数调用时传参个数对不对
 
   public:
     // 以下函数用来遍历语法树生成符号表，并将 LValAST 替换成 NumberAST
     void sema_analysis(CompUnitAST& comp_unit);
+    void sema_analysis(CompUnitListAST& comp_unit_list);
 
     void sema_analysis(DeclAST_1& decl);
     void sema_analysis(DeclAST_2& decl);
@@ -264,7 +356,9 @@ class Visitor_sema {
     void sema_analysis(InitValAST& init_val);
 
     void sema_analysis(FuncDefAST& func_def);
-    void sema_analysis(FuncTypeAST& fun_type) {return;}
+    void sema_analysis(FuncTypeAST& func_type);
+    void sema_analysis(FuncFParamListAST& func_f_param_list);
+    void sema_analysis(FuncFParamAST& func_f_param);
     void sema_analysis(BlockAST& block);
     void sema_analysis(BlockItemListAST& block_item_list);
     void sema_analysis(BlockItemAST_1& block_item);
@@ -289,6 +383,8 @@ class Visitor_sema {
     void sema_analysis(NumberAST& number);
     void sema_analysis(UnaryExpAST_1& unary_exp);
     void sema_analysis(UnaryExpAST_2& unary_exp);
+    void sema_analysis(UnaryExpAST_3& unary_exp);
+    void sema_analysis(FuncRParamListAST& func_r_param_list);
     void sema_analysis(UnaryOpAST& unary_op);
     void sema_analysis(MulExpAST_1& mul_exp);
     void sema_analysis(MulExpAST_2& mul_exp);

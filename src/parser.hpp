@@ -19,16 +19,44 @@ class BaseAST {
 };
 
 // 非终结符的类均从基类继承
-// CompUnit  ::= FuncDef;
+// CompUnit    ::= CompUnitList;
 class CompUnitAST : public BaseAST {
   public:
     // 用智能指针管理对象
-    std::unique_ptr<BaseAST> func_def;
+    std::unique_ptr<BaseAST> comp_unit_list;
 
     void Dump() const override {
         std::cout << "CompUnitAST { ";
-        func_def->Dump();
+        comp_unit_list -> Dump();
         std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// CompUnitList   ::= FuncDef | CompUnitList FuncDef;
+class CompUnitListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> func_defs;
+
+    void Dump() const override {
+        std::cout << "CompUnitListAST { ";
+        for (int i = 0; i < func_defs.size(); i++) {
+            func_defs[i] -> Dump();
+            if (i != func_defs.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
+    void push_back(std::unique_ptr<BaseAST> func_def) {
+        func_defs.push_back(std::move(func_def));
     }
 
     void accept(Visitor_ast& visitor) override {
@@ -299,18 +327,26 @@ class InitValAST : public BaseAST {
     }
 };
 
-// FuncDef   ::= FuncType IDENT "(" ")" Block;
+// FuncDef     ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
 class FuncDefAST : public BaseAST {
   public:
     std::unique_ptr<BaseAST> func_type;
     std::string ident;
+    std::unique_ptr<BaseAST> func_f_param_list; // 可能为空
     std::unique_ptr<BaseAST> block;
 
     void Dump() const override {
         std::cout << "FuncDefAST { ";
-        func_type->Dump();
+        func_type -> Dump();
         std::cout << ", " << ident << ", ";
-        block->Dump();
+        if (func_f_param_list) {
+            func_f_param_list -> Dump();
+        }
+        else {
+            std::cout << "NULL";
+        }
+        std::cout << ", ";
+        block -> Dump();
         std::cout << " }";
     }
 
@@ -323,13 +359,62 @@ class FuncDefAST : public BaseAST {
     }
 };
 
-// FuncType  ::= "int";
+// FuncType  ::= "int" | "void";
 class FuncTypeAST : public BaseAST {
   public:
     std::string func_type;
 
     void Dump() const override {
         std::cout << "FuncTypeAST { " << func_type << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// FuncFParamList ::= FuncFParam | FuncFParamList "," FuncFParam;
+class FuncFParamListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> func_f_params;
+
+    void Dump() const override {
+        std::cout << "FuncFParamListAST { ";
+        for(int i = 0; i < func_f_params.size(); i++) {
+            func_f_params[i] -> Dump();
+            if (i != func_f_params.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
+    void push_back(std::unique_ptr<BaseAST> func_f_param) {
+        func_f_params.push_back(std::move(func_f_param));
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// FuncFParam  ::= BType IDENT;
+class FuncFParamAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> btype;
+    std::string ident;
+
+    void Dump() const override {
+        std::cout << "FuncFParamAST { ";
+        btype -> Dump();
+        std::cout << ", " << ident << " }";
     }
 
     void accept(Visitor_ast& visitor) override {
@@ -493,7 +578,7 @@ class MatchedStmtAST_2 : public BaseAST {
     std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {
-        std::cout << "MatchedStmtAST { ";
+        std::cout << "MatchedStmtAST { return, ";
         if (exp)
             exp -> Dump();
         else
@@ -781,7 +866,7 @@ class NumberAST : public BaseAST {
     }
 };
 
-// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
+// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
 class UnaryExpAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> primaryexp;
@@ -811,6 +896,59 @@ class UnaryExpAST_2 : public BaseAST {
         std::cout << ", ";
         unaryexp -> Dump();
         std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class UnaryExpAST_3 : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> func_r_param_list;
+
+    void Dump() const override {
+        std::cout << "UnaryExpAST { ";
+        std::cout << ident << ", ";
+        if (func_r_param_list) {
+            func_r_param_list -> Dump();
+        }
+        else {
+            std::cout << "NULL";
+        }
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// FuncRParamList ::= Exp | FuncRParamList "," Exp;
+class FuncRParamListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> func_r_params; // ExpAST 的 vector
+
+    void Dump() const override {
+        std::cout << "FuncRParamListAST { ";
+        for (int i = 0; i < func_r_params.size(); i++) {
+            func_r_params[i] -> Dump();
+            if (i != func_r_params.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
+    void push_back(std::unique_ptr<BaseAST> func_r_param) {
+        func_r_params.push_back(std::move(func_r_param));
     }
 
     void accept(Visitor_ast& visitor) override {

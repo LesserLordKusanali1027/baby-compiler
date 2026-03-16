@@ -1,6 +1,7 @@
 # include <iostream>
 # include <vector>
 # include <fstream>
+# include <unordered_map>
 # include "koopa.hpp"
 # include "riscv.hpp"
 
@@ -10,7 +11,7 @@ int Visitor_ir::ParamReg(std::string param) {
     if (param[0] == '%') { // 临时符号
         // 把内存加载到寄存器
         file << "  lw    " << register_name[current_register]
-             << ", " << stack_usage[param] << "(sp)\n";
+             << ", " << var_offset[param] << "(sp)\n";
         current_register++;
         return current_register-1;
     }
@@ -51,44 +52,88 @@ int Visitor_ir::ThreeOp(ValueIR_2& value, std::string opcode) {
     return dest;
 }
 // 函数栈空间分配计算
-int Visitor_ir::stack_setup(FunctionIR& function) {
-    int space = 0; // 栈指针需要下移的空间
+void Visitor_ir::stack_setup(FunctionIR& function) {
+    stack_frame = 0; // 栈指针需要下移的空间
+    var_space = 0;
+    ra_space = 0;
+    param_space = 0;
 
     for (int i = 0; i < function.basic_blocks.size(); i++) {
         BasicBlockIR* basic_block = dynamic_cast<BasicBlockIR*>(function.basic_blocks[i]);
 
         for (int j = 0; j < basic_block->values.size(); j++) {
+            // 计算 var_space
             if (dynamic_cast<ValueIR_2*>(basic_block->values[j])) {
                 ValueIR_2* value = dynamic_cast<ValueIR_2*>(basic_block->values[j]);
-                stack_usage[value->target] = space;
-                space += 4;
+                var_offset[value->target] = var_space;
+                var_space += 4;
             }
             else if (dynamic_cast<ValueIR_3*>(basic_block->values[j])) {
                 ValueIR_3* value = dynamic_cast<ValueIR_3*>(basic_block->values[j]);
-                stack_usage[value->target] = space;
-                space += 4;
+                var_offset[value->target] = var_space;
+                var_space += 4;
+            }
+            else if (dynamic_cast<ValueIR_6*>(basic_block->values[j])) {
+                ValueIR_6* value = dynamic_cast<ValueIR_6*>(basic_block->values[j]);
+                if (!(value->target).empty()) {
+                    var_offset[value->target] = var_space;
+                    var_space += 4;
+                }
+            }
+
+            // 计算 a0_space 和 param_space
+            if (dynamic_cast<ValueIR_6*>(basic_block->values[j])) {
+                ValueIR_6* value = dynamic_cast<ValueIR_6*>(basic_block->values[j]);
+
+                ra_space = 4;
+                int param_num = (value->parameters).size()-8 > 0 ? (value->parameters).size()-8 : 0;
+                if (param_num != 0 && param_num*4 > param_space)
+                    param_space = param_num*4;
             }
         }
     }
 
-    return space;
+    if (param_space != 0) {
+        // 遍历 unordered_map var_offset 调整偏移量
+        std::unordered_map<std::string,int>::iterator it;
+        for (it = var_offset.begin(); it != var_offset.end(); it++)
+            it -> second += param_space;
+    }
+
+    stack_frame = var_space + ra_space + param_space;
+    if (stack_frame != 0 && stack_frame % 16 != 0)
+        stack_frame = (stack_frame / 16 + 1) * 16;
+
+    return;
 }
 
 
 void Visitor_ir::riscv_get(ProgramIR& program) {
-    file << "  .text\n";
     for (int i = 0; i < program.functions.size(); i++) {
+        file << "  .text\n";
         program.functions[i] -> accept(*this);
+        file << "\n";
     }
 }
 
 void Visitor_ir::riscv_get(FunctionIR& function) {
-    file << "  .globl " << function.name << "\n";
-    file << function.name << ":\n";
+    file << "  .globl " << function.name.substr(1) << "\n";
+    file << function.name.substr(1) << ":\n";
 
     // 计算要分配的栈空间
-    this->stack_frame = stack_setup(function);
-    file << "  addi sp, sp, -" << std::to_string(this->stack_frame) << '\n';
+    stack_setup(function);
+    if (stack_frame != 0)
+        file << "  addi  sp, sp, -" << stack_frame << '\n';
+
+    // 保存返回地址
+    if (ra_space != 0) {
+        file << "  sw    ra, " << stack_frame - 4 << "(sp)\n";
+    }
+
+    // 记下各个参数的名字，用到的时候再加载
+    for (int i = 0; i < function.parameters.size(); i++) {
+        param_name[function.parameters[i]] = i;
+    }
 
     for (int i = 0; i < function.basic_blocks.size(); i++) {
         function.basic_blocks[i] -> accept(*this);
@@ -97,8 +142,9 @@ void Visitor_ir::riscv_get(FunctionIR& function) {
     // 返回，注意要返回的内容应该已经被放到了 a0 中
     // 下面两条指令放到 ret 中了
     // file << "  addi sp, sp, " << std::to_string(this->stack_frame) << '\n';
-    stack_usage.clear();
     // file << "  ret\n";
+    var_offset.clear();
+    param_name.clear();
 }
 
 void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
@@ -114,14 +160,19 @@ void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
 void Visitor_ir::riscv_get(ValueIR_1& value) {
     if (value.opcode == "ret") {
         if (value.operand[0] == '%') { // 临时符号，lw 内存
-            file << "  lw    a0, " << stack_usage[value.operand] << "(sp)\n";
+            file << "  lw    a0, " << var_offset[value.operand] << "(sp)\n";
         }
         else {
             file << "  li    a0, " << value.operand << '\n';
         }
         
+        // 加载 ra
+        if (ra_space != 0) {
+            file << "  lw    ra, " << stack_frame - 4 << "(sp)\n";
+        }
         // 恢复栈帧 + 返回
-        file << "  addi sp, sp, " << std::to_string(this->stack_frame) << '\n';
+        if (stack_frame != 0)
+            file << "  addi  sp, sp, " << this->stack_frame << '\n';
         file << "  ret\n";
     }
     else if (value.opcode == "jump") {
@@ -137,7 +188,7 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
     if (value.opcode == "sub") {
         dest = ThreeOp(value, "  sub   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "eq") {
         // 目前这里第二个参数一定是 0，但仍然放到一起
@@ -145,39 +196,39 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "add") {
         // 目前看来，不存在一个临时符号被多次使用的情况，所以前面的寄存器也不用保留，默认覆盖排在后面的寄存器
         dest = ThreeOp(value, "  add   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "mul") {
         dest = ThreeOp(value, "  mul   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     // 注意除法和取模都是不可交换顺序的运算
     else if (value.opcode == "div") {
         dest = ThreeOp(value, "  div   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "mod") {
         dest = ThreeOp(value, "  rem   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "gt") {
         dest = ThreeOp(value, "  sgt   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "lt") {
         dest = ThreeOp(value, "  slt   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "ge") {
         // 先弄个 slt
@@ -186,7 +237,7 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "le") {
         // 先弄个 sgt
@@ -195,7 +246,7 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "ne") {
         // 先弄个 xor
@@ -204,7 +255,7 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         file << "  snez  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "eq") {
         // 先弄个 xor
@@ -213,17 +264,17 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         file << "  seqz  " << register_name[dest] << ", "
              << register_name[dest] << '\n';
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "and") {
         dest = ThreeOp(value, "  and   ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
     else if (value.opcode == "or") {
         dest = ThreeOp(value, "  or    ");
         file << "  sw    " << register_name[dest] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
 
     current_register = 1;
@@ -233,9 +284,9 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
 void Visitor_ir::riscv_get(ValueIR_3& value) {
     if (value.opcode == "load") {
         file << "  lw    " << register_name[current_register] << ", "
-             << stack_usage[value.operand] << "(sp)\n";
+             << var_offset[value.operand] << "(sp)\n";
         file << "  sw    " << register_name[current_register] << ", "
-             << stack_usage[value.target] << "(sp)\n";
+             << var_offset[value.target] << "(sp)\n";
     }
 
     current_register = 1;
@@ -244,17 +295,30 @@ void Visitor_ir::riscv_get(ValueIR_3& value) {
 // 用于处理 store，逻辑和 load 一样
 void Visitor_ir::riscv_get(ValueIR_4& value) {
     if (value.opcode == "store") {
-        if (value.operand1[0]!='%' && value.operand1[0]!='@') {
+        if (param_name.count(value.operand1)) { // 当里面是函数参数时
+            int idx = param_name[value.operand1];
+            if (idx < 8) {
+                file << "  sw    " << param_register[idx] << ", "
+                     << var_offset[value.operand2] << "(sp)\n";
+            }
+            else {
+                file << "  lw    " << register_name[current_register] << ", "
+                     << stack_frame + (idx-8)*4 << "(sp)\n";
+                file << "  sw    " << register_name[current_register] << ", "
+                     << var_offset[value.operand2] << "(sp)\n";
+            }
+        }
+        else if (value.operand1[0]!='%' && value.operand1[0]!='@') {
             file << "  li    " << register_name[current_register] << ", "
                  << value.operand1 << '\n';
             file << "  sw    " << register_name[current_register] << ", "
-                 << stack_usage[value.operand2] << "(sp)\n";
+                 << var_offset[value.operand2] << "(sp)\n";
         }
         else {
             file << "  lw    " << register_name[current_register] << ", "
-                 << stack_usage[value.operand1] << "(sp)\n";
+                 << var_offset[value.operand1] << "(sp)\n";
             file << "  sw    " << register_name[current_register] << ", "
-                 << stack_usage[value.operand2] << "(sp)\n";
+                 << var_offset[value.operand2] << "(sp)\n";
         }
     }
 
@@ -266,7 +330,7 @@ void Visitor_ir::riscv_get(ValueIR_5& value) {
     if (value.opcode == "br") {
         if (value.operand1[0] == '%') {
             file << "  lw    " << register_name[current_register] << ", "
-                 << stack_usage[value.operand1] << "(sp)\n";
+                 << var_offset[value.operand1] << "(sp)\n";
         }
         else {
             file << "  li    " << register_name[current_register] << ", "
@@ -278,4 +342,52 @@ void Visitor_ir::riscv_get(ValueIR_5& value) {
     }
 
     current_register = 1;
+}
+
+// 处理 call 指令
+void Visitor_ir::riscv_get(ValueIR_6& value) {
+    for (int i = 0; i < value.parameters.size(); i++) {
+        if (i < 8) {
+            if (value.parameters[i][0] == '%') {
+                file << "  lw    " << param_register[i] << ", "
+                     << var_offset[value.parameters[i]] << "(sp)\n";
+            }
+            else {
+                file << "  li    " << param_register[i] << ", "
+                     << value.parameters[i] << '\n';
+            }
+        }
+        else {
+            if (value.parameters[i][0] == '%') {
+                file << "  lw    " << register_name[current_register] << ", "
+                     << var_offset[value.parameters[i]] << "(sp)\n";
+                file << "  sw    " << register_name[current_register] << ", "
+                     << (i-8)*4 << "(sp)\n";
+            }
+            else {
+                file << "  li    " << register_name[current_register] << ", "
+                     << value.parameters[i] << '\n';
+                file << "  sw    " << register_name[current_register] << ", "
+                     << (i-8)*4 << "(sp)\n";
+            }
+        }
+    }
+
+    file << "  call  " << value.operand.substr(1) << '\n';
+
+    if (!value.target.empty()) {
+        file << "  sw    a0, " << var_offset[value.target] << "(sp)\n";
+    }
+}
+
+// 处理 ret 指令
+void Visitor_ir::riscv_get(ValueIR_7& value) {
+    // 加载 ra
+    if (ra_space != 0) {
+        file << "  lw    ra, " << stack_frame - 4 << "(sp)\n";
+    }
+    // 恢复栈帧 + 返回
+    if (stack_frame != 0)
+        file << "  addi  sp, sp, " << this->stack_frame << '\n';
+    file << "  ret\n";
 }

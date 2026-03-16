@@ -4,9 +4,19 @@
 
 void Visitor_ast::ir_init(CompUnitAST& comp_unit) {
     this -> program = new ProgramIR();
-    comp_unit.func_def.get() -> accept(*this);
-    (program -> functions).push_back(this -> function);
+    comp_unit.comp_unit_list.get() -> accept(*this);
     return;
+}
+
+void Visitor_ast::ir_init(CompUnitListAST& comp_unit_list) {
+    for (int i = 0; i < comp_unit_list.func_defs.size(); i++) {
+        // 定义新的函数 IR
+        this -> function = new FunctionIR();
+        // 开始
+        comp_unit_list.func_defs[i].get() -> accept(*this);
+        // 将函数 IR 放入程序
+        (this -> program -> functions).push_back(this -> function);
+    }
 }
 
 void Visitor_ast::ir_init(DeclAST_1& decl) {
@@ -64,14 +74,15 @@ void Visitor_ast::ir_init(VarDefAST_2& var_def) {
     (this -> basic_block -> values).push_back(value1);
 
     // 右边 load
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     var_def.initval.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
+
     ValueIR_4* value2 = new ValueIR_4();
     value2 -> opcode = "store";
     value2 -> operand2 = "@" + var_def.ident;
-    value2 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value2 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     (this -> basic_block -> values).push_back(value2);
 }
 
@@ -80,45 +91,70 @@ void Visitor_ast::ir_init(InitValAST& init_val) {
 }
 
 void Visitor_ast::ir_init(FuncDefAST& func_def) {
-    // 定义新的函数 IR
-    this -> function = new FunctionIR();
+    init_states();
+    // 返回值类型
     func_def.func_type.get() -> accept(*this);
-    this -> function -> name = func_def.ident;
+    // 函数名
+    this -> function -> name = "@" + func_def.ident;
+    // 把函数名和返回值类型记录到 func_table 中
+    (this -> func_table)[this -> function -> name] = this -> function -> function_type;
     
     // 先把基本块的定义放在函数里，因为 BlockAST 与 IR 中的基本块并不等同
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = "%entry";
 
-    // 初始化 then-else-end 的组数，和 return 的组数
-    this -> branch_num = 1;
-    this -> return_num = 1;
-    // 初始化短路求值的状态
-    this -> sub_exp = 1;
-    this -> and_sce = 1;
-    this -> and_exit = 1;
-    this -> or_sce = 1;
-    this -> or_exit = 1;
-    // 初始化 while 状态
-    this -> while_num = 1;
-
     // 定义存放短路求值结果的局部变量
-    ValueIR_3* value = new ValueIR_3();
-    value -> opcode = "alloc";
-    value -> operand = "i32";
-    value -> target = this -> sce_var;
-    (this -> basic_block -> values).push_back(value);
+    ValueIR_3* value1 = new ValueIR_3();
+    value1 -> opcode = "alloc";
+    value1 -> operand = "i32";
+    value1 -> target = this -> sce_var;
+    (this -> basic_block -> values).push_back(value1);
+
+    // 参数
+    if (func_def.func_f_param_list)
+        func_def.func_f_param_list.get() -> accept(*this);
 
     func_def.block.get() -> accept(*this);
-    // 现在 push 基本块的地方有很多了， FuncDefAST 这里暂时不需要了
-    // (function -> basic_blocks).push_back(this -> basic_block);
+
+    // 补上 ret
+    if (this->function->function_type == "void") {
+        if ((this->basic_block->values).size()==0 || !dynamic_cast<ValueIR_7*>((this->basic_block->values).back())) {
+            ValueIR_7* value2 = new ValueIR_7();
+            value2 -> opcode = "ret";
+            (this -> basic_block -> values).push_back(value2);
+            (this -> function -> basic_blocks).push_back(this -> basic_block);
+        }
+    }
 
     return;
 }
 
 void Visitor_ast::ir_init(FuncTypeAST& func_type) {
-    if (func_type.func_type == "int")
-        this -> function -> function_type = "i32";
+    // int 或 void
+    this -> function -> function_type = func_type.func_type;
     return;
+}
+
+void Visitor_ast::ir_init(FuncFParamListAST& func_f_param_list) {
+    for (int i = 0; i < func_f_param_list.func_f_params.size(); i++)
+        func_f_param_list.func_f_params[i].get() -> accept(*this);
+}
+
+void Visitor_ast::ir_init(FuncFParamAST& func_f_param) {
+    (this -> function -> parameters).push_back("%" + func_f_param.ident);
+
+    // alloc 和 store
+    ValueIR_3* value1 = new ValueIR_3();
+    value1 -> opcode = "alloc";
+    value1 -> operand = "i32";
+    value1 -> target = "@" + func_f_param.ident;
+    (this -> basic_block -> values).push_back(value1);
+
+    ValueIR_4* value2 = new ValueIR_4();
+    value2 -> opcode = "store";
+    value2 -> operand1 = "%" + func_f_param.ident;
+    value2 -> operand2 = "@" + func_f_param.ident;
+    (this -> basic_block -> values).push_back(value2);
 }
 
 void Visitor_ast::ir_init(BlockAST& block) {
@@ -150,31 +186,31 @@ void Visitor_ast::ir_init(StmtAST_2& stmt) {
 
 // MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
 void Visitor_ast::ir_init(MatchedStmtAST_1& matched_stmt) {
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     matched_stmt.exp.get() -> accept(*this);
+    recover_lval();
     
-    this->lval_mode = STORE;
+    set_lval(STORE);
     matched_stmt.lval.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
 }
 void Visitor_ast::ir_init(MatchedStmtAST_2& matched_stmt) {
-    if (!matched_stmt.exp) { // 只有 return; 的时候，默认 return 0
-        ValueIR_1* value = new ValueIR_1();
+    if (!matched_stmt.exp) { // 只有 return; 的时候，默认只有 ret
+        ValueIR_7* value = new ValueIR_7();
         value -> opcode = "ret";
-        value -> operand = "0";
         (this -> basic_block -> values).push_back(value);
         return;
     }
 
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     matched_stmt.exp.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
 
     ValueIR_1* value = new ValueIR_1();
     value -> opcode = "ret";
     // 但需要判断是直接返回数字还是临时变量，有了栈以后不用了
-    value -> operand = (this->stk).top();
-    (this->stk).pop();
+    value -> operand = (this->exp_stk).top();
+    (this->exp_stk).pop();
 
     (this -> basic_block -> values).push_back(value);
     (this -> function -> basic_blocks).push_back(this -> basic_block);
@@ -187,19 +223,19 @@ void Visitor_ast::ir_init(MatchedStmtAST_2& matched_stmt) {
 }
 void Visitor_ast::ir_init(MatchedStmtAST_3& matched_stmt) {
     if (matched_stmt.exp) {
-        this->lval_mode = LOAD;
+        set_lval(LOAD);
         matched_stmt.exp.get() -> accept(*this);
-        this->lval_mode = START;
-        (this->stk).pop();
+        recover_lval();
+        (this->exp_stk).pop();
     }
 }
 void Visitor_ast::ir_init(MatchedStmtAST_4& matched_stmt) {
     matched_stmt.block.get() -> accept(*this);
 }
 void Visitor_ast::ir_init(MatchedStmtAST_5& matched_stmt) {
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     matched_stmt.exp.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
 
     // 准备 br 跳转指令
     std::string then_block = "%then_" + std::to_string(this->branch_num);
@@ -209,8 +245,8 @@ void Visitor_ast::ir_init(MatchedStmtAST_5& matched_stmt) {
 
     ValueIR_5* value1 = new ValueIR_5();
     value1 -> opcode = "br";
-    value1 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value1 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value1 -> operand2 = then_block;
     value1 -> operand3 = else_block;
 
@@ -260,14 +296,14 @@ void Visitor_ast::ir_init(MatchedStmtAST_6& matched_stmt) {
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = entry_block;
     // exp，返回后结果放在了栈顶
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     matched_stmt.exp.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
     // br 指令
     ValueIR_5* value2 = new ValueIR_5();
     value2 -> opcode = "br";
-    value2 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value2 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value2 -> operand2 = body_block;
     value2 -> operand3 = end_block;
     (this -> basic_block -> values).push_back(value2);
@@ -333,9 +369,9 @@ void Visitor_ast::ir_init(MatchedStmtAST_8& matched_stmt) { // continue
 
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 void Visitor_ast::ir_init(UnmatchedStmtAST_1& unmatched_stmt) {
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     unmatched_stmt.exp.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
 
     // 准备基本块名字
     std::string then_block = "%then_" + std::to_string(this->branch_num);
@@ -345,8 +381,8 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_1& unmatched_stmt) {
     // 准备 br 指令
     ValueIR_5* value1 = new ValueIR_5();
     value1 -> opcode = "br";
-    value1 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value1 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value1 -> operand2 = then_block;
     value1 -> operand3 = end_block;
 
@@ -367,9 +403,9 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_1& unmatched_stmt) {
     this -> basic_block -> name = end_block;
 }
 void Visitor_ast::ir_init(UnmatchedStmtAST_2& unmatched_stmt) {
-    this->lval_mode = LOAD;
+    set_lval(LOAD);
     unmatched_stmt.exp.get() -> accept(*this);
-    this->lval_mode = START;
+    recover_lval();
 
     // 准备基本块名字
     std::string then_block = "%then_" + std::to_string(this->branch_num);
@@ -380,8 +416,8 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_2& unmatched_stmt) {
     // 准备 br 指令
     ValueIR_5* value1 = new ValueIR_5();
     value1 -> opcode = "br";
-    value1 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value1 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value1 -> operand2 = then_block;
     value1 -> operand3 = else_block;
 
@@ -420,8 +456,8 @@ void Visitor_ast::ir_init(ExpAST& exp) {
         // 最终计算结果放到 sce_result 中
         ValueIR_4* value1 = new ValueIR_4();
         value1 -> opcode = "store";
-        value1 -> operand1 = (this->stk).top();
-        (this->stk).pop();
+        value1 -> operand1 = (this->exp_stk).top();
+        (this->exp_stk).pop();
         value1 -> operand2 = this -> sce_var;
         (this -> basic_block -> values).push_back(value1);
         // jump 到最终块
@@ -457,7 +493,7 @@ void Visitor_ast::ir_init(ExpAST& exp) {
         value5 -> operand = this -> sce_var;
         value5 -> target = "%" + std::to_string(this->tmp_symbol++);
         (this -> basic_block -> values).push_back(value5);
-        (this->stk).push(value5 -> target);
+        (this->exp_stk).push(value5 -> target);
     }
 
     return;
@@ -471,15 +507,15 @@ void Visitor_ast::ir_init(LValAST& lval) {
         value -> operand = "@" + lval.ident;
         value -> target = "%" + std::to_string(this->tmp_symbol);
         this->tmp_symbol++;
-        (this->stk).push(value -> target);
+        (this->exp_stk).push(value -> target);
         (this -> basic_block -> values).push_back(value);
     }
     else if (this->lval_mode == STORE) {
         ValueIR_4* value = new ValueIR_4();
         value -> opcode = "store";
-        value -> operand1 = (this->stk).top();
+        value -> operand1 = (this->exp_stk).top();
         value -> operand2 = "@" + lval.ident;
-        (this->stk).pop();
+        (this->exp_stk).pop();
         (this -> basic_block -> values).push_back(value);
     }
 }
@@ -499,7 +535,7 @@ void Visitor_ast::ir_init(PrimaryExpAST_3& primary_exp) {
 }
 
 void Visitor_ast::ir_init(NumberAST& number) {
-    (this->stk).push(std::to_string(number.num));
+    (this->exp_stk).push(std::to_string(number.num));
     return;
 }
 
@@ -521,23 +557,58 @@ void Visitor_ast::ir_init(UnaryExpAST_2& unary_exp) {
             value -> target = "%" + std::to_string(this->tmp_symbol);
             value -> opcode = "sub";
             value -> operand1 = "0";
-            value -> operand2 = (this->stk).top();
-            (this->stk).pop();
-            (this->stk).push(value -> target);
+            value -> operand2 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
         case '!':
             value -> target = "%" + std::to_string(this->tmp_symbol);
             value -> opcode = "eq";
             value -> operand2 = "0";
-            value -> operand1 = (this->stk).top();
-            (this->stk).pop();
-            (this->stk).push(value -> target);
+            value -> operand1 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
     }
-    (this->basic_block -> values).push_back(value);
+    (this -> basic_block -> values).push_back(value);
     return;
+}
+void Visitor_ast::ir_init(UnaryExpAST_3& unary_exp) {
+    ValueIR_6* value = new ValueIR_6();
+    value -> opcode = "call";
+    value -> operand = "@" + unary_exp.ident;
+    (this -> value_stk).push(value);
+
+    if (unary_exp.func_r_param_list)
+        unary_exp.func_r_param_list.get() -> accept(*this);
+    
+    (this -> value_stk).pop();
+
+    if ((this->func_table)[value->operand] == "int") {
+        value -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this->exp_stk).push(value->target);
+    }
+    else { // 也需要一个结果，不过不会用，只是为了与 Exp; 其他式子一样
+        (this->exp_stk).push("%" + std::to_string(this->tmp_symbol));
+    }
+
+    (this -> basic_block -> values).push_back(value);
+}
+
+void Visitor_ast::ir_init(FuncRParamListAST& func_r_param_list) {
+    for (int i = 0; i < func_r_param_list.func_r_params.size(); i++) {
+        // 下面实际上是在调 Exp，需要设置状态
+        set_lval(LOAD);       
+        func_r_param_list.func_r_params[i].get() -> accept(*this);
+        recover_lval();
+
+        // 此时返回值位于栈顶
+        ValueIR_6* value = dynamic_cast<ValueIR_6*>((this -> value_stk).top());
+        (value -> parameters).push_back((this->exp_stk).top());
+        (this->exp_stk).pop();
+    }
 }
 
 void Visitor_ast::ir_init(UnaryOpAST& unary_op) {
@@ -559,35 +630,35 @@ void Visitor_ast::ir_init(MulExpAST_2& mul_exp) {
     switch(mul_exp.ch) {
         case '*':
             value -> opcode = "mul";
-            value -> operand1 = (this->stk).top();
-            (this->stk).pop();
-            value -> operand2 = (this->stk).top();
-            (this->stk).pop();
+            value -> operand1 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            value -> operand2 = (this->exp_stk).top();
+            (this->exp_stk).pop();
             value -> target = "%" + std::to_string(this->tmp_symbol);
 
-            (this->stk).push(value -> target);
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
         case '/':
             value -> opcode = "div";
-            value -> operand1 = (this->stk).top();
-            (this->stk).pop();
-            value -> operand2 = (this->stk).top();
-            (this->stk).pop();
+            value -> operand1 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            value -> operand2 = (this->exp_stk).top();
+            (this->exp_stk).pop();
             value -> target = "%" + std::to_string(this->tmp_symbol);
 
-            (this->stk).push(value -> target);
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
         case '%':
             value -> opcode = "mod";
-            value -> operand1 = (this->stk).top();
-            (this->stk).pop();
-            value -> operand2 = (this->stk).top();
-            (this->stk).pop();
+            value -> operand1 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            value -> operand2 = (this->exp_stk).top();
+            (this->exp_stk).pop();
             value -> target = "%" + std::to_string(this->tmp_symbol);
 
-            (this->stk).push(value -> target);
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
     }
@@ -609,24 +680,24 @@ void Visitor_ast::ir_init(AddExpAST_2& add_exp) {
     switch(add_exp.ch) {
         case '+':
             value -> opcode = "add";
-            value -> operand1 = (this->stk).top();
-            (this->stk).pop();
-            value -> operand2 = (this->stk).top();
-            (this->stk).pop();
+            value -> operand1 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            value -> operand2 = (this->exp_stk).top();
+            (this->exp_stk).pop();
             value -> target = "%" + std::to_string(this->tmp_symbol);
 
-            (this->stk).push(value -> target);
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
         case '-':
             value -> opcode = "sub";
-            value -> operand1 = (this->stk).top();
-            (this->stk).pop();
-            value -> operand2 = (this->stk).top();
-            (this->stk).pop();
+            value -> operand1 = (this->exp_stk).top();
+            (this->exp_stk).pop();
+            value -> operand2 = (this->exp_stk).top();
+            (this->exp_stk).pop();
             value -> target = "%" + std::to_string(this->tmp_symbol);
 
-            (this->stk).push(value -> target);
+            (this->exp_stk).push(value -> target);
             this->tmp_symbol++;
             break;
     }
@@ -654,13 +725,13 @@ void Visitor_ast::ir_init(RelExpAST_2& rel_exp) {
     else if (rel_exp.cmp_str == "<=")
         value -> opcode = "le";
 
-    value -> operand1 = (this->stk).top();
-    (this->stk).pop();
-    value -> operand2 = (this->stk).top();
-    (this->stk).pop();
+    value -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
+    value -> operand2 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value -> target = "%" + std::to_string(this->tmp_symbol);
 
-    (this->stk).push(value -> target);
+    (this->exp_stk).push(value -> target);
     this->tmp_symbol++;
 
     (this->basic_block -> values).push_back(value);
@@ -682,13 +753,13 @@ void Visitor_ast::ir_init(EqExpAST_2& eq_exp) {
     else if (eq_exp.cmp_str == "!=")
         value -> opcode = "ne";
 
-    value -> operand1 = (this->stk).top();
-    (this->stk).pop();
-    value -> operand2 = (this->stk).top();
-    (this->stk).pop();
+    value -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
+    value -> operand2 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value -> target = "%" + std::to_string(this->tmp_symbol);
 
-    (this->stk).push(value -> target);
+    (this->exp_stk).push(value -> target);
     this->tmp_symbol++;
 
     (this->basic_block -> values).push_back(value);
@@ -707,7 +778,7 @@ void Visitor_ast::ir_init(LAndExpAST_2& l_and_exp) {
     // br 指令
     ValueIR_5* value1 = new ValueIR_5();
     value1 -> opcode = "br";
-    value1 -> operand1 = (this->stk).top();
+    value1 -> operand1 = (this->exp_stk).top();
     value1 -> operand2 = "%sub_exp_" + std::to_string(this->sub_exp);
     value1 -> operand3 = "%and_sce_" + std::to_string(this->and_sce);
     (this -> basic_block -> values).push_back(value1);
@@ -722,8 +793,8 @@ void Visitor_ast::ir_init(LAndExpAST_2& l_and_exp) {
     // 第一个 ne 指令
     ValueIR_2* value2 = new ValueIR_2();
     value2 -> opcode = "ne";
-    value2 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value2 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value2 -> operand2 = "0";
     value2 -> target = "%" + std::to_string(this->tmp_symbol++);
     (this -> basic_block -> values).push_back(value2);
@@ -731,8 +802,8 @@ void Visitor_ast::ir_init(LAndExpAST_2& l_and_exp) {
     // 第二个 ne 指令
     ValueIR_2* value3 = new ValueIR_2();
     value3 -> opcode = "ne";
-    value3 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value3 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value3 -> operand2 = "0";
     value3 -> target = "%" + std::to_string(this->tmp_symbol++);
     (this -> basic_block -> values).push_back(value3);
@@ -745,7 +816,7 @@ void Visitor_ast::ir_init(LAndExpAST_2& l_and_exp) {
     value4 -> target = "%" + std::to_string(this->tmp_symbol++);
     (this -> basic_block -> values).push_back(value4);
     // 结果放入 stk
-    (this->stk).push(value4 -> target);
+    (this->exp_stk).push(value4 -> target);
 
     return;
 }
@@ -758,8 +829,8 @@ void Visitor_ast::ir_init(LOrExpAST_1& l_or_exp) {
         // 最终计算结果放到 sce_result 中
         ValueIR_4* value1 = new ValueIR_4();
         value1 -> opcode = "store";
-        value1 -> operand1 = (this->stk).top();
-        (this->stk).pop();
+        value1 -> operand1 = (this->exp_stk).top();
+        (this->exp_stk).pop();
         value1 -> operand2 = this -> sce_var;
         (this -> basic_block -> values).push_back(value1);
         // jump 到最终块
@@ -795,7 +866,7 @@ void Visitor_ast::ir_init(LOrExpAST_1& l_or_exp) {
         value5 -> operand = this -> sce_var;
         value5 -> target = "%" + std::to_string(this->tmp_symbol++);
         (this -> basic_block -> values).push_back(value5);
-        (this->stk).push(value5 -> target);
+        (this->exp_stk).push(value5 -> target);
     }
  
     return;
@@ -809,7 +880,7 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
     // br 指令
     ValueIR_5* value1 = new ValueIR_5();
     value1 -> opcode = "br";
-    value1 -> operand1 = (this->stk).top();
+    value1 -> operand1 = (this->exp_stk).top();
     value1 -> operand2 = "%or_sce_" + std::to_string(this->or_sce);
     value1 -> operand3 = "%sub_exp_" + std::to_string(this->sub_exp);
     (this -> basic_block -> values).push_back(value1);
@@ -827,8 +898,8 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
         // 把最终计算结果放到 sce_result 中
         ValueIR_4* value2 = new ValueIR_4();
         value2 -> opcode = "store";
-        value2 -> operand1 = (this->stk).top();
-        (this->stk).pop();
+        value2 -> operand1 = (this->exp_stk).top();
+        (this->exp_stk).pop();
         value2 -> operand2 = this -> sce_var;
         (this -> basic_block -> values).push_back(value2);
         // jump 到最终块
@@ -864,15 +935,15 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
         value6 -> operand = this -> sce_var;
         value6 -> target = "%" + std::to_string(this->tmp_symbol++);
         (this -> basic_block -> values).push_back(value6);
-        (this->stk).push(value6 -> target);
+        (this->exp_stk).push(value6 -> target);
     }
 
     // 然后是常规的 2 个 ne 一个 or
     // 第一个 ne 指令
     ValueIR_2* value7 = new ValueIR_2();
     value7 -> opcode = "ne";
-    value7 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value7 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value7 -> operand2 = "0";
     value7 -> target = "%" + std::to_string(this->tmp_symbol++);
     (this->basic_block -> values).push_back(value7);
@@ -880,8 +951,8 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
     // 第二个 ne 指令
     ValueIR_2* value8 = new ValueIR_2();
     value8 -> opcode = "ne";
-    value8 -> operand1 = (this->stk).top();
-    (this->stk).pop();
+    value8 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
     value8 -> operand2 = "0";
     value8 -> target = "%" + std::to_string(this->tmp_symbol++);
     (this->basic_block -> values).push_back(value8);
@@ -894,7 +965,7 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
     value9 -> target = "%" + std::to_string(this->tmp_symbol++);
     (this -> basic_block -> values).push_back(value9);
     // 结果入栈
-    (this->stk).push(value9 -> target);
+    (this->exp_stk).push(value9 -> target);
 
     return;
 }

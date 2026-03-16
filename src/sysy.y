@@ -36,11 +36,14 @@ using namespace std;
   ConstDefListAST* constitemlist_val;
   BlockItemListAST* blockitemlist_val;
   VarDefListAST* vardeflist_val;
+  CompUnitListAST* compunitlist_val;
+  FuncFParamListAST* funcfparamlist_val;
+  FuncRParamListAST* funcrparamlist_val;
 }
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN GE LE EQ NE AND OR CONST IF ELSE WHILE BREAK CONTINUE
+%token INT VOID RETURN GE LE EQ NE AND OR CONST IF ELSE WHILE BREAK CONTINUE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
@@ -51,6 +54,10 @@ using namespace std;
 %type <blockitemlist_val> BlockItemList
 %type <vardeflist_val> VarDefList
 %type <ast_val> MatchedStmt UnmatchedStmt
+%type <ast_val> FuncFParam
+%type <compunitlist_val> CompUnitList
+%type <funcfparamlist_val> FuncFParamList
+%type <funcrparamlist_val> FuncRParamList
 
 %%
 
@@ -59,11 +66,25 @@ using namespace std;
 // 而 parser 一旦解析完 CompUnit, 就说明所有的 token 都被解析了, 即解析结束了
 // 此时我们应该把 FuncDef 返回的结果收集起来, 作为 AST 传给调用 parser 的函数
 // $1 指代规则里第一个符号的返回值, 也就是 FuncDef 的返回值
+// CompUnit    ::= CompUnitList;
 CompUnit
-  : FuncDef {
+  : CompUnitList {
     auto comp_unit = make_unique<CompUnitAST>();
-    comp_unit -> func_def = unique_ptr<BaseAST>($1);
+    comp_unit -> comp_unit_list = unique_ptr<BaseAST>($1);
     ast = std::move(comp_unit);
+  }
+  ;
+
+// CompUnitList   ::= FuncDef | CompUnitList FuncDef;
+CompUnitList
+  : FuncDef {
+    auto ast = new CompUnitListAST();
+    ast -> push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | CompUnitList FuncDef {
+    $1 -> push_back(unique_ptr<BaseAST>($2));
+    $$ = $1;
   }
   ;
 
@@ -180,7 +201,7 @@ InitVal
   }
   ;
 
-// FuncDef ::= FuncType IDENT '(' ')' Block;
+// FuncDef     ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
 // 我们这里可以直接写 '(' 和 ')', 因为之前在 lexer 里已经处理了单个字符的情况
 // 解析完成后, 把这些符号的结果收集起来, 然后拼成一个新的字符串, 作为结果返回
 // $$ 表示非终结符的返回值, 我们可以通过给这个符号赋值的方法来返回结果
@@ -195,13 +216,22 @@ FuncDef
     auto ast = new FuncDefAST();
     ast -> func_type = unique_ptr<BaseAST>($1);
     ast -> ident = *unique_ptr<string>($2);
+    ast -> func_f_param_list = unique_ptr<BaseAST>(nullptr);
     ast -> block = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  | FuncType IDENT '(' FuncFParamList ')' Block {
+    auto ast = new FuncDefAST();
+    ast -> func_type = unique_ptr<BaseAST>($1);
+    ast -> ident = *unique_ptr<string>($2);
+    ast -> func_f_param_list = unique_ptr<BaseAST>($4);
+    ast -> block = unique_ptr<BaseAST>($6);
     $$ = ast;
   }
   ;
 
 // 同上, 不再解释
-// FuncType  ::= "int";
+// FuncType    ::= "void" | "int";
 FuncType
   : INT {
     auto ast = new FuncTypeAST();
@@ -209,7 +239,35 @@ FuncType
     ast -> func_type = *unique_ptr<string>(str);
     $$ = ast;
   }
+  | VOID {
+    auto ast = new FuncTypeAST();
+    auto str = new string("void");
+    ast -> func_type = *unique_ptr<string>(str);
+    $$ = ast;
+  }
   ;
+
+// FuncFParamList ::= FuncFParam | FuncFParamList "," FuncFParam;
+FuncFParamList
+  : FuncFParam {
+    auto ast = new FuncFParamListAST();
+    ast -> push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | FuncFParamList ',' FuncFParam {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
+  }
+  ;
+
+// FuncFParam  ::= BType IDENT;
+FuncFParam
+  : BType IDENT {
+    auto ast = new FuncFParamAST();
+    ast -> btype = unique_ptr<BaseAST>($1);
+    ast -> ident = *unique_ptr<string>($2);
+    $$ = ast;
+  }
 
 // Block         ::= "{" BlockItemList "}";
 Block
@@ -380,7 +438,7 @@ PrimaryExp
   }
   ;
 
-// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
+// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
 UnaryExp
   : PrimaryExp {
     auto ast = new UnaryExpAST_1();
@@ -392,6 +450,31 @@ UnaryExp
     ast -> unaryop = unique_ptr<BaseAST>($1);
     ast -> unaryexp = unique_ptr<BaseAST>($2);
     $$ = ast;
+  }
+  | IDENT '(' ')' {
+    auto ast = new UnaryExpAST_3();
+    ast -> ident = *unique_ptr<string>($1);
+    ast -> func_r_param_list = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | IDENT '(' FuncRParamList ')' {
+    auto ast = new UnaryExpAST_3();
+    ast -> ident = *unique_ptr<string>($1);
+    ast -> func_r_param_list = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
+  ;
+
+// FuncRParamList ::= Exp | FuncRParamList "," Exp;
+FuncRParamList
+  : Exp {
+    auto ast = new FuncRParamListAST();
+    ast -> push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | FuncRParamList ',' Exp {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
   }
   ;
 
