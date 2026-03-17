@@ -7,14 +7,29 @@ void Visitor_sema::sema_analysis(CompUnitAST& comp_unit) {
     comp_unit.comp_unit_list.get() -> accept(*this);
 }
 
-// CompUnitList  ::= FuncDef | CompUnitList FuncDef;
+// CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
 void Visitor_sema::sema_analysis(CompUnitListAST& comp_unit_list) {
     // 加入库函数声明
     def_lib_func();
+    // 加入全局符号表
+    symbol_table_stack.push_table();
 
-    for (int i = 0; i < comp_unit_list.func_defs.size(); i++) {
-        comp_unit_list.func_defs[i].get() -> accept(*this);
+    for (int i = 0; i < comp_unit_list.comp_unit_items.size(); i++) {
+        comp_unit_list.comp_unit_items[i].get() -> accept(*this);
     }
+
+    // 拿走全局符号表
+    symbol_table_stack.pop_table();
+}
+
+// CompUnitItem  ::= FuncDef | Decl;
+void Visitor_sema::sema_analysis(CompUnitItemAST_1& comp_unit_item) {
+    comp_unit_item.func_def.get() -> accept(*this);
+}
+void Visitor_sema::sema_analysis(CompUnitItemAST_2& comp_unit_item) {
+    this -> global_decl = true;
+    comp_unit_item.decl.get() -> accept(*this);
+    this -> global_decl = false;
 }
 
 // Decl          ::= ConstDecl | VarDecl;
@@ -98,9 +113,50 @@ void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
 
     var_def.ident = symbol_table_stack.get_var(var_def.ident);
 
-    this->error_mode = UNDF;
-    var_def.initval.get() -> accept(*this);
-    this->error_mode = UNDF;
+    if (this -> global_decl) {
+        // 设定成计算 const 右侧的模式
+        this->cal_mode = true;
+        this->error_mode = VAR_UNDF;
+        // 计算
+        var_def.initval.get() -> accept(*this);
+        // 恢复
+        this->cal_mode = false;
+        this->error_mode = NONE;
+
+        // 修改 AST 树
+        // 先新建节点
+        auto init_val = std::make_unique<InitValAST>();
+        auto exp = std::make_unique<ExpAST>();
+        auto l_or_exp = std::make_unique<LOrExpAST_1>();
+        auto l_and_exp = std::make_unique<LAndExpAST_1>();
+        auto eq_exp = std::make_unique<EqExpAST_1>();
+        auto rel_exp = std::make_unique<RelExpAST_1>();
+        auto add_exp = std::make_unique<AddExpAST_1>();
+        auto mul_exp = std::make_unique<MulExpAST_1>();
+        auto unary_exp = std::make_unique<UnaryExpAST_1>();
+        auto primary_exp = std::make_unique<PrimaryExpAST_3>();
+        auto number = std::make_unique<NumberAST>();
+        // 获取计算出的结果
+        number -> num = (this ->stk).top();
+        (this ->stk).pop();
+        // 把节点从下向上拼接，进行修改
+        primary_exp -> number = std::move(number);
+        unary_exp -> primaryexp = std::move(primary_exp);
+        mul_exp -> unaryexp = std::move(unary_exp);
+        add_exp -> mulexp = std::move(mul_exp);
+        rel_exp -> addexp = std::move(add_exp);
+        eq_exp -> relexp = std::move(rel_exp);
+        l_and_exp -> eqexp = std::move(eq_exp);
+        l_or_exp -> landexp = std::move(l_and_exp);
+        exp -> lorexp = std::move(l_or_exp);
+        init_val -> exp = std::move(exp);
+        var_def.initval = std::move(init_val);
+    }
+    else {
+        this->error_mode = UNDF;
+        var_def.initval.get() -> accept(*this);
+        this->error_mode = UNDF;
+    }
 }
 
 // InitVal       ::= Exp;
@@ -310,7 +366,7 @@ void Visitor_sema::sema_analysis(LValAST& lval) {
     }
     else if (this->error_mode == VAR_UNDF) {
         if (symbol_table_stack.if_var(lval.ident)) {
-            std::cout << "Semantic analysis failed: var '" << lval.ident << "' cannot be used to assign for const.\n";
+            std::cout << "Semantic analysis failed: var '" << lval.ident << "' cannot be used to assign for const or global var.\n";
             exit(-1);
         }
     }

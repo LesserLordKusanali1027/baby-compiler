@@ -40,23 +40,61 @@ class CompUnitAST : public BaseAST {
     }
 };
 
-// CompUnitList   ::= FuncDef | CompUnitList FuncDef;
+// CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
 class CompUnitListAST : public BaseAST {
   public:
-    std::vector<std::unique_ptr<BaseAST>> func_defs;
+    std::vector<std::unique_ptr<BaseAST>> comp_unit_items;
 
     void Dump() const override {
         std::cout << "CompUnitListAST { ";
-        for (int i = 0; i < func_defs.size(); i++) {
-            func_defs[i] -> Dump();
-            if (i != func_defs.size()-1)
+        for (int i = 0; i < comp_unit_items.size(); i++) {
+            comp_unit_items[i] -> Dump();
+            if (i != comp_unit_items.size()-1)
                 std::cout << ", ";
         }
         std::cout << " }";
     }
 
-    void push_back(std::unique_ptr<BaseAST> func_def) {
-        func_defs.push_back(std::move(func_def));
+    void push_back(std::unique_ptr<BaseAST> comp_unit_item) {
+        comp_unit_items.push_back(std::move(comp_unit_item));
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// CompUnitItem  ::= FuncDef | Decl;
+class CompUnitItemAST_1 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> func_def;
+
+    void Dump() const override {
+        std::cout << "CompUnitItemAST { ";
+        func_def -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class CompUnitItemAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> decl;
+
+    void Dump() const override {
+        std::cout << "CompUnitItemAST { ";
+        decl -> Dump();
+        std::cout << " }";
     }
 
     void accept(Visitor_ast& visitor) override {

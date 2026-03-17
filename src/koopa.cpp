@@ -2,34 +2,48 @@
 #include "parser.hpp"
 #include <vector>
 
+// CompUnit      ::= CompUnitList;
 void Visitor_ast::ir_init(CompUnitAST& comp_unit) {
     this -> program = new ProgramIR();
     comp_unit.comp_unit_list.get() -> accept(*this);
     return;
 }
 
+// CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
 void Visitor_ast::ir_init(CompUnitListAST& comp_unit_list) {
     // 把库函数的声明放入 IR
     decl_lib_func();
 
-    for (int i = 0; i < comp_unit_list.func_defs.size(); i++) {
-        // 定义新的函数 IR
-        this -> function = new FunctionIR();
+    for (int i = 0; i < comp_unit_list.comp_unit_items.size(); i++) {
         // 开始
-        comp_unit_list.func_defs[i].get() -> accept(*this);
-        // 将函数 IR 放入程序
-        (this -> program -> functions).push_back(this -> function);
+        comp_unit_list.comp_unit_items[i].get() -> accept(*this);
     }
 }
 
+// CompUnitItem  ::= FuncDef | Decl;
+void Visitor_ast::ir_init(CompUnitItemAST_1& comp_unit_item) {
+    // 定义新的函数 IR
+    this -> function = new FunctionIR();
+    // 开始
+    comp_unit_item.func_def.get() -> accept(*this);
+    // 将函数 IR 放入程序
+    (this -> program -> functions).push_back(this -> function);
+}
+void Visitor_ast::ir_init(CompUnitItemAST_2& comp_unit_item) {
+    this -> global_decl = true;
+    comp_unit_item.decl.get() -> accept(*this);
+    this -> global_decl = false;
+}
+
+// Decl          ::= ConstDecl | VarDecl;
 void Visitor_ast::ir_init(DeclAST_1& decl) {
     // 没写就是什么都不用做
 }
-
 void Visitor_ast::ir_init(DeclAST_2& decl) { // 变量还是要往下传的
     decl.vardecl.get() -> accept(*this);
 }
 
+// ConstDecl     ::= "const" BType ConstDefList ";";
 void Visitor_ast::ir_init(ConstDeclAST& const_decl) {
 
 }
@@ -42,55 +56,86 @@ void Visitor_ast::ir_init(BTypeAST& btype) {
     }
 }
 
+// ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
 void Visitor_ast::ir_init(ConstDefListAST& const_def_list) {
 
 }
 
+// ConstDef      ::= IDENT "=" ConstInitVal;
 void Visitor_ast::ir_init(ConstDefAST& const_def) {
 
 }
 
+// ConstInitVal  ::= ConstExp;
 void Visitor_ast::ir_init(ConstInitValAST& const_init_val) {
 
 }
 
+// VarDecl       ::= BType VarDefList ";";
 void Visitor_ast::ir_init(VarDeclAST& var_decl) {
     var_decl.vardeflist.get() -> accept(*this);
 }
 
+// VarDefList    ::= VarDef | VarDefList "," VarDef;
 void Visitor_ast::ir_init(VarDefListAST& var_def_list) {
     for (int i = 0; i < var_def_list.vardefs.size(); i++) {
         var_def_list.vardefs[i].get() -> accept(*this);
     }
 }
 
+// VarDef        ::= IDENT | IDENT "=" InitVal;
 void Visitor_ast::ir_init(VarDefAST_1& var_def) {
-    // 是时候 alloc 了
-    ValueIR_3* value = new ValueIR_3();
-    value -> opcode = "alloc";
-    value -> target = "@" + var_def.ident;
-    value -> operand = "i32";
-    (this -> basic_block -> values).push_back(value);
+    if (this -> global_decl) {
+        GlobalIR* global_var = new GlobalIR();
+        global_var -> name = "@" + var_def.ident;
+        global_var -> type = "int"; // 目前都是 int，Lab9 中会变
+        global_var -> init_val = "zeroinit";
+        (this -> program -> globals).push_back(global_var);
+    }
+    else {
+        // 是时候 alloc 了
+        ValueIR_3* value = new ValueIR_3();
+        value -> opcode = "alloc";
+        value -> target = "@" + var_def.ident;
+        value -> operand = "i32";
+        (this -> basic_block -> values).push_back(value);
+    }
 }
 void Visitor_ast::ir_init(VarDefAST_2& var_def) {
-    // 左边 alloc
-    ValueIR_3* value1 = new ValueIR_3();
-    value1 -> opcode = "alloc";
-    value1 -> target = "@" + var_def.ident;
-    value1 -> operand = "i32";
-    (this -> basic_block -> values).push_back(value1);
+    if (this -> global_decl) {
+        GlobalIR* global_var = new GlobalIR();
+        global_var -> name = "@" + var_def.ident;
+        global_var -> type = "int";
 
-    // 右边 load
-    set_lval(LOAD);
-    var_def.initval.get() -> accept(*this);
-    recover_lval();
+        // 然后获取左边的值
+        set_lval(LOAD);
+        var_def.initval.get() -> accept(*this);
+        recover_lval();
+        // 嗯，获取到了
+        global_var -> init_val = (this->exp_stk).top();
+        (this->exp_stk).pop();
+        (this -> program -> globals).push_back(global_var);
+    }
+    else {
+        // 左边 alloc
+        ValueIR_3* value1 = new ValueIR_3();
+        value1 -> opcode = "alloc";
+        value1 -> target = "@" + var_def.ident;
+        value1 -> operand = "i32";
+        (this -> basic_block -> values).push_back(value1);
 
-    ValueIR_4* value2 = new ValueIR_4();
-    value2 -> opcode = "store";
-    value2 -> operand2 = "@" + var_def.ident;
-    value2 -> operand1 = (this->exp_stk).top();
-    (this->exp_stk).pop();
-    (this -> basic_block -> values).push_back(value2);
+        // 右边 load
+        set_lval(LOAD);
+        var_def.initval.get() -> accept(*this);
+        recover_lval();
+
+        ValueIR_4* value2 = new ValueIR_4();
+        value2 -> opcode = "store";
+        value2 -> operand2 = "@" + var_def.ident;
+        value2 -> operand1 = (this->exp_stk).top();
+        (this->exp_stk).pop();
+        (this -> basic_block -> values).push_back(value2);
+    }
 }
 
 void Visitor_ast::ir_init(InitValAST& init_val) {

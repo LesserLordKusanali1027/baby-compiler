@@ -58,6 +58,7 @@ using namespace std;
 %type <compunitlist_val> CompUnitList
 %type <funcfparamlist_val> FuncFParamList
 %type <funcrparamlist_val> FuncRParamList
+%type <ast_val> CompUnitItem
 
 %%
 
@@ -75,16 +76,30 @@ CompUnit
   }
   ;
 
-// CompUnitList   ::= FuncDef | CompUnitList FuncDef;
+// CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
 CompUnitList
-  : FuncDef {
+  : CompUnitItem {
     auto ast = new CompUnitListAST();
     ast -> push_back(unique_ptr<BaseAST>($1));
     $$ = ast;
   }
-  | CompUnitList FuncDef {
+  | CompUnitList CompUnitItem {
     $1 -> push_back(unique_ptr<BaseAST>($2));
     $$ = $1;
+  }
+  ;
+
+// CompUnitItem  ::= FuncDef | Decl;
+CompUnitItem
+  : FuncDef {
+    auto ast = new CompUnitItemAST_1();
+    ast -> func_def = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | Decl {
+    auto ast = new CompUnitItemAST_2();
+    ast -> decl = unique_ptr<BaseAST>($1);
+    $$ = ast;
   }
   ;
 

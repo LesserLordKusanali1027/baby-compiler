@@ -11,6 +11,8 @@ class BaseAST;
 
 class CompUnitAST;
 class CompUnitListAST;
+class CompUnitItemAST_1;
+class CompUnitItemAST_2;
 
 class DeclAST_1;
 class DeclAST_2;
@@ -328,7 +330,8 @@ class FunctionDeclTable {
 enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 
 // CompUnit      ::= CompUnitList;
-// CompUnitList  ::= FuncDef | CompUnitList FuncDef;
+// CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
+// CompUnitItem  ::= FuncDef | Decl;
 
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
@@ -433,13 +436,15 @@ class Visitor_sema {
     }
 
     // 全局常量、变量相关
-    
+    bool global_decl; // 告诉 DeclAST 定义的是全局常量、变量
 
   public:
 
     // 以下函数用来遍历语法树生成符号表，并将 LValAST 替换成 NumberAST
     void sema_analysis(CompUnitAST& comp_unit);
     void sema_analysis(CompUnitListAST& comp_unit_list);
+    void sema_analysis(CompUnitItemAST_1& comp_unit_item);
+    void sema_analysis(CompUnitItemAST_2& comp_unit_item);
 
     void sema_analysis(DeclAST_1& decl);
     void sema_analysis(DeclAST_2& decl);

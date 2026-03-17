@@ -12,6 +12,8 @@ class BaseAST;
 
 class CompUnitAST;
 class CompUnitListAST;
+class CompUnitItemAST_1;
+class CompUnitItemAST_2;
 
 class DeclAST_1;
 class DeclAST_2;
@@ -109,6 +111,31 @@ class ProgramIR : public BaseIR {
             if (i != functions.size()-1)
                 file << "\n\n";
         }
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
+
+class GlobalIR : public BaseIR {
+  public:
+    std::string name;
+    std::string type;
+    std::string init_val;
+
+    void Dump() const override {
+        std::cout << "global " << name << " = alloc ";
+        if (type == "int")
+            std::cout << "i32, ";
+        std::cout << init_val << '\n';
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        file << "global " << name << " = alloc ";
+        if (type == "int")
+            file << "i32, ";
+        file << init_val << '\n';
     }
 
     void accept(Visitor_ir& visitor) override {
@@ -408,7 +435,8 @@ class ValueIR_7 : public BaseIR {
 enum LVal_Mode { START = 0, LOAD, STORE };
 
 // CompUnit      ::= CompUnitList;
-// CompUnitList  ::= FuncDef | CompUnitList FuncDef;
+// CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
+// CompUnitItem  ::= FuncDef | Decl;
 
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
@@ -497,6 +525,9 @@ class Visitor_ast {
     std::stack<LVal_Mode> lval_stk;
     // 4. 记录 BType 是否作为函数定义中的 FuncType
     bool if_func_def = false;
+
+    // 全局变量相关
+    bool global_decl; // 全局的变量声明
   
     // 工具函数
     void set_lval(LVal_Mode mode) {
@@ -583,6 +614,9 @@ class Visitor_ast {
     // 节点函数
     void ir_init(CompUnitAST& comp_unit);
     void ir_init(CompUnitListAST& comp_unit_list);
+    void ir_init(CompUnitItemAST_1& comp_unit_item);
+    void ir_init(CompUnitItemAST_2& comp_unit_item);
+
     void ir_init(DeclAST_1& decl);
     void ir_init(DeclAST_2& decl);
     void ir_init(ConstDeclAST& const_decl);

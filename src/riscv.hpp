@@ -6,6 +6,7 @@
 # include <unordered_map>
 
 class ProgramIR;
+class GlobalIR;
 class FunctionIR;
 class FunctionDeclIR;
 class BasicBlockIR;
@@ -37,6 +38,9 @@ class Visitor_ir {
     // 记录参数名称、是第几个参数，用于处理 store %x, @x 这种将参数存入局部变量的 IR 语句
     std::unordered_map<std::string, int> param_name;
 
+    // 记录所有的全局变量
+    std::unordered_map<std::string, int> global_vars;
+
   public:
     Visitor_ir(const char* output) {
         file.open(output);
@@ -57,6 +61,7 @@ class Visitor_ir {
 
     // RISC-V 生成函数
     void riscv_get(ProgramIR& program);
+    void riscv_get(GlobalIR& global);
     void riscv_get(FunctionIR& function);
     void riscv_get(FunctionDeclIR& function_decl) {return;} // 不用管
     void riscv_get(BasicBlockIR& basic_block);

@@ -109,9 +109,28 @@ void Visitor_ir::stack_setup(FunctionIR& function) {
 
 
 void Visitor_ir::riscv_get(ProgramIR& program) {
+    for (int i = 0; i < program.globals.size(); i++) {
+        program.globals[i] -> accept(*this);
+    }
     for (int i = 0; i < program.functions.size(); i++) {
         program.functions[i] -> accept(*this);
     }
+}
+
+void Visitor_ir::riscv_get(GlobalIR& global) {
+    // 放到 data 里面
+    file << "  .data\n";
+    file << "  .globl " << global.name.substr(1) << '\n';
+    file << global.name.substr(1) << ":\n";
+    if (global.init_val == "zeroinit" && global.type == "int") {
+        file << "  .zero 4\n\n";
+    }
+    else if (global.type == "int") {
+        file << "  .word " << global.init_val << "\n\n";
+    }
+
+    // 记录到全局变量表中，供 store 和 load 使用
+    this -> global_vars[global.name] = 1;
 }
 
 void Visitor_ir::riscv_get(FunctionIR& function) {
@@ -284,10 +303,20 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
 // 用于 alloc 和 load，但 alloc 啥也不用做了，只需要处理 load
 void Visitor_ir::riscv_get(ValueIR_3& value) {
     if (value.opcode == "load") {
-        file << "  lw    " << register_name[current_register] << ", "
-             << var_offset[value.operand] << "(sp)\n";
-        file << "  sw    " << register_name[current_register] << ", "
-             << var_offset[value.target] << "(sp)\n";
+        if (global_vars.count(value.operand)) { // load 的是全局变量时
+            file << "  la    " << register_name[current_register] << ", "
+                 << value.operand.substr(1) << '\n';
+            file << "  lw    " << register_name[current_register] << ", "
+                 << "0(" << register_name[current_register] << ")\n";
+            file << "  sw    " << register_name[current_register] << ", "
+                 << var_offset[value.target] << "(sp)\n";
+        }
+        else { // load 的是局部变量时
+            file << "  lw    " << register_name[current_register] << ", "
+                << var_offset[value.operand] << "(sp)\n";
+            file << "  sw    " << register_name[current_register] << ", "
+                << var_offset[value.target] << "(sp)\n";
+        }
     }
 
     current_register = 1;
@@ -308,6 +337,20 @@ void Visitor_ir::riscv_get(ValueIR_4& value) {
                 file << "  sw    " << register_name[current_register] << ", "
                      << var_offset[value.operand2] << "(sp)\n";
             }
+        }
+        else if (global_vars.count(value.operand2)) { // 当目标是全局变量时
+            if (value.operand1[0]!='%' && value.operand1[0]!='@') { // 数字
+                file << "  li    " << register_name[current_register] << ", "
+                     << value.operand1 << '\n';
+            }
+            else {
+                file << "  lw    " << register_name[current_register] << ", "
+                     << var_offset[value.operand1] << "(sp)\n";
+            }
+            file << "  la    " << register_name[current_register+1] << ", "
+                 << value.operand2.substr(1) << '\n';
+            file << "  sw    " << register_name[current_register] << ", "
+                 << "0(" << register_name[current_register+1] << ")\n";
         }
         else if (value.operand1[0]!='%' && value.operand1[0]!='@') {
             file << "  li    " << register_name[current_register] << ", "
