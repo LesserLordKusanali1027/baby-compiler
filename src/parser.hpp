@@ -129,7 +129,7 @@ class ConstDeclAST : public BaseAST {
     }
 };
 
-// BType         ::= "int";
+// BType         ::= "int" | "void";
 class BTypeAST : public BaseAST {
   public:
     std::string btype;
@@ -327,17 +327,17 @@ class InitValAST : public BaseAST {
     }
 };
 
-// FuncDef     ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
+// FuncDef     ::= BType IDENT "(" [FuncFParamList] ")" Block;
 class FuncDefAST : public BaseAST {
   public:
-    std::unique_ptr<BaseAST> func_type;
+    std::unique_ptr<BaseAST> btype;
     std::string ident;
     std::unique_ptr<BaseAST> func_f_param_list; // 可能为空
     std::unique_ptr<BaseAST> block;
 
     void Dump() const override {
         std::cout << "FuncDefAST { ";
-        func_type -> Dump();
+        btype -> Dump();
         std::cout << ", " << ident << ", ";
         if (func_f_param_list) {
             func_f_param_list -> Dump();
@@ -348,24 +348,6 @@ class FuncDefAST : public BaseAST {
         std::cout << ", ";
         block -> Dump();
         std::cout << " }";
-    }
-
-    void accept(Visitor_ast& visitor) override {
-        visitor.ir_init(*this);
-    }
-
-    void accept(Visitor_sema& visitor) override {
-        visitor.sema_analysis(*this);
-    }
-};
-
-// FuncType  ::= "int" | "void";
-class FuncTypeAST : public BaseAST {
-  public:
-    std::string func_type;
-
-    void Dump() const override {
-        std::cout << "FuncTypeAST { " << func_type << " }";
     }
 
     void accept(Visitor_ast& visitor) override {

@@ -110,13 +110,12 @@ void Visitor_ir::stack_setup(FunctionIR& function) {
 
 void Visitor_ir::riscv_get(ProgramIR& program) {
     for (int i = 0; i < program.functions.size(); i++) {
-        file << "  .text\n";
         program.functions[i] -> accept(*this);
-        file << "\n";
     }
 }
 
 void Visitor_ir::riscv_get(FunctionIR& function) {
+    file << "  .text\n";
     file << "  .globl " << function.name.substr(1) << "\n";
     file << function.name.substr(1) << ":\n";
 
@@ -145,6 +144,8 @@ void Visitor_ir::riscv_get(FunctionIR& function) {
     // file << "  ret\n";
     var_offset.clear();
     param_name.clear();
+    
+    file << "\n";
 }
 
 void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {

@@ -48,7 +48,7 @@ using namespace std;
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt Number Exp PrimaryExp UnaryExp UnaryOp MulExp AddExp RelExp EqExp LAndExp LOrExp
+%type <ast_val> FuncDef Block Stmt Number Exp PrimaryExp UnaryExp UnaryOp MulExp AddExp RelExp EqExp LAndExp LOrExp
 %type <ast_val> Decl ConstDecl ConstDef BType ConstInitVal BlockItem LVal ConstExp VarDecl VarDef InitVal
 %type <constitemlist_val> ConstDefList
 %type <blockitemlist_val> BlockItemList
@@ -112,11 +112,17 @@ ConstDecl
   }
   ;
 
-// BType         ::= "int";
+// BType         ::= "int" | "void";
 BType
   : INT {
     auto ast = new BTypeAST();
     auto str = new string("int");
+    ast -> btype = *unique_ptr<string>(str);
+    $$ = ast;
+  }
+  | VOID {
+    auto ast = new BTypeAST();
+    auto str = new string("void");
     ast -> btype = *unique_ptr<string>(str);
     $$ = ast;
   }
@@ -201,48 +207,31 @@ InitVal
   }
   ;
 
-// FuncDef     ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
+// FuncDef     ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // 我们这里可以直接写 '(' 和 ')', 因为之前在 lexer 里已经处理了单个字符的情况
 // 解析完成后, 把这些符号的结果收集起来, 然后拼成一个新的字符串, 作为结果返回
 // $$ 表示非终结符的返回值, 我们可以通过给这个符号赋值的方法来返回结果
-// 你可能会问, FuncType, IDENT 之类的结果已经是字符串指针了
+// 你可能会问, BType, IDENT 之类的结果已经是字符串指针了
 // 为什么还要用 unique_ptr 接住它们, 然后再解引用, 把它们拼成另一个字符串指针呢
 // 因为所有的字符串指针都是我们 new 出来的, new 出来的内存一定要 delete
 // 否则会发生内存泄漏, 而 unique_ptr 这种智能指针可以自动帮我们 delete
 // 虽然此处你看不出用 unique_ptr 和手动 delete 的区别, 但当我们定义了 AST 之后
 // 这种写法会省下很多内存管理的负担
 FuncDef
-  : FuncType IDENT '(' ')' Block {
+  : BType IDENT '(' ')' Block {
     auto ast = new FuncDefAST();
-    ast -> func_type = unique_ptr<BaseAST>($1);
+    ast -> btype = unique_ptr<BaseAST>($1);
     ast -> ident = *unique_ptr<string>($2);
     ast -> func_f_param_list = unique_ptr<BaseAST>(nullptr);
     ast -> block = unique_ptr<BaseAST>($5);
     $$ = ast;
   }
-  | FuncType IDENT '(' FuncFParamList ')' Block {
+  | BType IDENT '(' FuncFParamList ')' Block {
     auto ast = new FuncDefAST();
-    ast -> func_type = unique_ptr<BaseAST>($1);
+    ast -> btype = unique_ptr<BaseAST>($1);
     ast -> ident = *unique_ptr<string>($2);
     ast -> func_f_param_list = unique_ptr<BaseAST>($4);
     ast -> block = unique_ptr<BaseAST>($6);
-    $$ = ast;
-  }
-  ;
-
-// 同上, 不再解释
-// FuncType    ::= "void" | "int";
-FuncType
-  : INT {
-    auto ast = new FuncTypeAST();
-    auto str = new string("int");
-    ast -> func_type = *unique_ptr<string>(str);
-    $$ = ast;
-  }
-  | VOID {
-    auto ast = new FuncTypeAST();
-    auto str = new string("void");
-    ast -> func_type = *unique_ptr<string>(str);
     $$ = ast;
   }
   ;

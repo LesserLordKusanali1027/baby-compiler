@@ -26,7 +26,6 @@ class VarDefAST_2;
 class InitValAST;
 
 class FuncDefAST;
-class FuncTypeAST;
 class FuncFParamListAST;
 class FuncFParamAST;
 class BlockAST;
@@ -200,7 +199,6 @@ class SymbolTableStack {
     }
 };
 
-
 // 记录函数信息的类
 class FunctionInfo {
   private:
@@ -229,8 +227,8 @@ class FunctionInfo {
     }
 
     // 判断参数个数对不对，只需要比较个数，不需要比较具体类型，因为都是 int
-    bool judge_param(int size) {
-        return size == params_count;
+    int param_num() {
+        return params_count;
     }
 };
 // 函数符号表类 (全局单层)
@@ -262,19 +260,67 @@ class FunctionTable {
     void add_type(std::string& name, std::string& func_type) {
         table[name] -> add_type(func_type);
     }
-    // 添加参数
+    // 参数++
+    void add_param(std::string& name) {
+        table[name] -> add_param();
+    }
+
+    // 报错检测相关
+    // 返回参数个数，用于检测是否匹配
+    int param_num(std::string& name) {
+        return table[name] -> param_num();
+    }
+    // 判断是否要有返回值，目前没用上
+    bool if_ret_int(std::string& name) {
+        return table[name] -> if_int();
+    }
+};
+// 函数声明符号表类
+class FunctionDeclTable {
+  private:
+    std::unordered_map<std::string, FunctionInfo*> table;
+
+  public:
+    ~FunctionDeclTable() {
+        table.clear();
+    }
+    // 判断函数有没有重复声明
+    bool if_exist(std::string& name) {
+        return (bool)table.count(name);
+    }
+    // 新增函数
+    void add_func(std::string& name) {
+        // 这里加一个保险，判断是否重复定义
+        if (table.count(name)) {
+            std::cout << "Function declaration table has a mistake: function '" << name << "' is redefined, which is the developer's fault.\n";
+            exit(-1);
+        }
+
+        auto f_info = new FunctionInfo();
+        table[name] = f_info;
+    }
+    // 添加返回类型
+    void add_type(std::string& name, std::string& func_type) {
+        table[name] -> add_type(func_type);
+    }
+    // 参数++
     void add_param(std::string& name) {
         table[name] -> add_param();
     }
 
     // 报错检测相关
     // 判断参数是否匹配
-    bool judge_param(std::string& name, int size) {
-        return table[name] -> judge_param(size);
+    int param_num(std::string& name) {
+        return table[name] -> param_num();
     }
-    // 判断是否要有返回值，目前没用上
+    // 判断是否要有返回值
     bool if_ret_int(std::string& name) {
         return table[name] -> if_int();
+    }
+
+    // 移除某个声明
+    void erase(std::string& name) {
+        table.erase(name);
     }
 };
 
@@ -286,7 +332,7 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
-// BType         ::= "int";
+// BType         ::= "int" | "void";
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
 // ConstDef      ::= IDENT "=" ConstInitVal;
 // ConstInitVal  ::= ConstExp;
@@ -295,8 +341,7 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // VarDef        ::= IDENT | IDENT "=" InitVal;
 // InitVal       ::= Exp;
 
-// FuncDef       ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
-// FuncType      ::= "int" | "void";
+// FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
 // FuncFParam    ::= BType IDENT;
 // Block         ::= "{" BlockItemList "}";
@@ -322,22 +367,76 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 
 class Visitor_sema {
   private:
-    SymbolTableStack symbol_table_stack; // 多层符号表
+    // 表达式计算相关
     std::stack<int> stk; // 计算用的栈
     int num; // 用来把 LVal 换成 Number 的变量
     char ch; //传递计算符号
-    // 信号
     bool cal_mode = false; // 计算模式是否开启
     Mode error_mode = NONE; // 报错检测模式
     bool if_fold = false; // 是否常量折叠
+
+    // 循环相关
     // 表明 while 循环的嵌套层数，0 表示不在 while 中
     int while_levels = 0;
+
+    // 常量、变量相关
+    SymbolTableStack symbol_table_stack; // 多层符号表
+
     // 函数相关
-    FunctionTable func_table; // 全局函数符号表
+    FunctionTable func_def_table; // 全局函数符号表
     std::string func_name; // 当前所在函数的名字
     std::string func_call; // 仅用来判断函数调用时传参个数对不对
+    bool if_func_def = false; // BType 节点是否作为 FuncType
+    FunctionDeclTable func_decl_table; // 已声明的函数表
+    // 添加库函数声明以供报错检测
+    void def_lib_func () {
+        std::string name_str;
+        std::string int_str = "int";
+        std::string void_str = "void";
+        // int getint()
+        name_str = "getint";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, int_str);
+        // int getch()
+        name_str = "getch";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, int_str);
+        // int getarray(int[])
+        name_str = "getarray";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, int_str);
+        func_def_table.add_param(name_str);
+        // void putint(int)
+        name_str = "putint";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, void_str);
+        func_def_table.add_param(name_str);
+        // void putch(int)
+        name_str = "putch";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, void_str);
+        func_def_table.add_param(name_str);
+        // void putarray(int, int[])
+        name_str = "putarray";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, void_str);
+        func_def_table.add_param(name_str);
+        func_def_table.add_param(name_str);
+        // void starttime()
+        name_str = "starttime";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, void_str);
+        // void stoptime()
+        name_str = "stoptime";
+        func_def_table.add_func(name_str);
+        func_def_table.add_type(name_str, void_str);
+    }
+
+    // 全局常量、变量相关
+    
 
   public:
+
     // 以下函数用来遍历语法树生成符号表，并将 LValAST 替换成 NumberAST
     void sema_analysis(CompUnitAST& comp_unit);
     void sema_analysis(CompUnitListAST& comp_unit_list);
@@ -345,7 +444,7 @@ class Visitor_sema {
     void sema_analysis(DeclAST_1& decl);
     void sema_analysis(DeclAST_2& decl);
     void sema_analysis(ConstDeclAST& const_decl);
-    void sema_analysis(BTypeAST& byte) {return;}
+    void sema_analysis(BTypeAST& btype);
     void sema_analysis(ConstDefListAST& const_def_list);
     void sema_analysis(ConstDefAST& const_def);
     void sema_analysis(ConstInitValAST& const_init_val);
@@ -356,7 +455,6 @@ class Visitor_sema {
     void sema_analysis(InitValAST& init_val);
 
     void sema_analysis(FuncDefAST& func_def);
-    void sema_analysis(FuncTypeAST& func_type);
     void sema_analysis(FuncFParamListAST& func_f_param_list);
     void sema_analysis(FuncFParamAST& func_f_param);
     void sema_analysis(BlockAST& block);

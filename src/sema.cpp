@@ -9,6 +9,9 @@ void Visitor_sema::sema_analysis(CompUnitAST& comp_unit) {
 
 // CompUnitList  ::= FuncDef | CompUnitList FuncDef;
 void Visitor_sema::sema_analysis(CompUnitListAST& comp_unit_list) {
+    // 加入库函数声明
+    def_lib_func();
+
     for (int i = 0; i < comp_unit_list.func_defs.size(); i++) {
         comp_unit_list.func_defs[i].get() -> accept(*this);
     }
@@ -25,6 +28,13 @@ void Visitor_sema::sema_analysis(DeclAST_2& decl) {
 // ConstDecl     ::= "const" BType ConstDefList ";";
 void Visitor_sema::sema_analysis(ConstDeclAST& const_decl) {
     const_decl.constdeflist.get() -> accept(*this);
+}
+
+// BType         ::= "int" | "void";
+void Visitor_sema::sema_analysis(BTypeAST& btype) {
+    if (this -> if_func_def) {
+        func_def_table.add_type(this->func_name, btype.btype);
+    }
 }
 
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
@@ -98,27 +108,44 @@ void Visitor_sema::sema_analysis(InitValAST& init_val) {
     init_val.exp.get() -> accept(*this);
 }
 
-// FuncDef     ::= FuncType IDENT "(" [FuncFParamList] ")" Block;
+// FuncDef     ::= BType IDENT "(" [FuncFParamList] ")" Block;
 void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
     // 函数名相关操作
     // 判断是否重复定义
-    if (func_table.if_exist(func_def.ident)) {
-        std::cout << "Semantic analysis failed: function '" << func_def.ident << "' is redefined.\n";
+    if (func_def_table.if_exist(func_def.ident)) {
+        std::cout << "Semantic analysis failed: function '" << func_def.ident << "' is redefined or conflict with the name of library function.\n";
         exit(-1);
     }
+    // 向函数定义表中加入信息
     // 记下函数名，并将函数名加入表
     this -> func_name = func_def.ident;
-    func_table.add_func(this -> func_name);
+    func_def_table.add_func(this -> func_name);
+    // 加入返回值
+    this -> if_func_def = true;
+    func_def.btype.get() -> accept(*this);
+    this -> if_func_def = false;
 
     // 为变量/常量符号表加一层
     symbol_table_stack.push_table();
 
-    // 加入返回值
-    func_def.func_type.get() -> accept(*this);
-
     // 加入参数
     if (func_def.func_f_param_list)
         func_def.func_f_param_list.get() -> accept(*this);
+
+    // 检查函数定义表是否与函数声明表的内容匹配
+    if (func_decl_table.if_exist(this -> func_name)) {
+        if (func_decl_table.param_num(this -> func_name) != func_def_table.param_num(this -> func_name)) {
+            std::cout << "Semantic analysis failed: function '" << this -> func_name << "' definition has different parameters with its declaration.\n";
+            exit(-1);
+        }
+        if (func_decl_table.if_ret_int(this -> func_name) != func_def_table.if_ret_int(this -> func_name)) {
+            std::cout << "Semantic analysis failed: function '" << this -> func_name << "' definition has different return with its declaration.\n";
+            exit(-1);
+        }
+
+        // 最后把函数声明移除，只留函数定义
+        func_decl_table.erase(this -> func_name);
+    }
 
     // 正式进入语句块
     func_def.block.get() -> accept(*this);
@@ -127,15 +154,10 @@ void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
     symbol_table_stack.pop_table();
 }
 
-// FuncType      ::= "int" | "void";
-void Visitor_sema::sema_analysis(FuncTypeAST& func_type) {
-    func_table.add_type(this->func_name, func_type.func_type);
-}
-
 // FuncFParamList ::= FuncFParam | FuncFParamList "," FuncFParam;
 void Visitor_sema::sema_analysis(FuncFParamListAST& func_f_param_list) {
     for (int i = 0; i < func_f_param_list.func_f_params.size(); i++) {
-        func_table.add_param(this->func_name);
+        func_def_table.add_param(this->func_name);
         func_f_param_list.func_f_params[i].get() -> accept(*this);
     }
 }
@@ -195,13 +217,13 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_1& matched_stmt) {
     this->error_mode = NONE;
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_2& matched_stmt) {
-    if (!matched_stmt.exp && !func_table.if_ret_int(this->func_name))
+    if (!matched_stmt.exp && !func_def_table.if_ret_int(this->func_name))
         return;
-    else if (!matched_stmt.exp && func_table.if_ret_int(this->func_name)) {
+    else if (!matched_stmt.exp && func_def_table.if_ret_int(this->func_name)) {
         std::cout << "Semantic analysis failed: function '" << this->func_name << "' should return int.\n";
         exit(-1);
     }
-    else if (matched_stmt.exp && !func_table.if_ret_int(this->func_name)) {
+    else if (matched_stmt.exp && !func_def_table.if_ret_int(this->func_name)) {
         std::cout << "Semantic analysis failed: function '" << this->func_name << "' should return nothing.\n";
         exit(-1);
     }
@@ -369,9 +391,9 @@ void Visitor_sema::sema_analysis(UnaryExpAST_2& unary_exp) {
     }
 }
 void Visitor_sema::sema_analysis(UnaryExpAST_3& unary_exp) {
-    // 检查函数名
-    if (!func_table.if_exist(unary_exp.ident)) {
-        std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' not defined.\n";
+    // 检查函数声明表和定义表
+    if (!func_decl_table.if_exist(unary_exp.ident) && !func_def_table.if_exist(unary_exp.ident)) {
+        std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' not declared or defined.\n";
         exit(-1);
     }
 
@@ -380,18 +402,34 @@ void Visitor_sema::sema_analysis(UnaryExpAST_3& unary_exp) {
         unary_exp.func_r_param_list.get() -> accept(*this);
     }
     else {
-        if (!func_table.judge_param(unary_exp.ident, 0)) {
-            std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' parameter not match when called.\n";
-            exit(-1);
+        if (func_decl_table.if_exist(unary_exp.ident)) {
+            if (func_decl_table.param_num(unary_exp.ident) != 0) {
+                std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' parameter not match when called.\n";
+                exit(-1);
+            }
+        }
+        else if (func_def_table.if_exist(unary_exp.ident)) {
+            if (func_def_table.param_num(unary_exp.ident) != 0) {
+                std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' parameter not match when called.\n";
+                exit(-1);
+            }
         }
     }
 }
 
 // FuncRParamList ::= Exp | FuncRParamList "," Exp;
 void Visitor_sema::sema_analysis(FuncRParamListAST& func_r_param_list) {
-    if (!func_table.judge_param(this->func_call, func_r_param_list.func_r_params.size())) {
-        std::cout << "Semantic analysis failed: function '" << this->func_call << "' parameter not match when called.\n";
-        exit(-1);
+    if (func_decl_table.if_exist(this->func_call)) {
+        if (func_decl_table.param_num(this->func_call) != func_r_param_list.func_r_params.size()) {
+            std::cout << "Semantic analysis failed: function '" << this->func_call << "' parameter not match when called.\n";
+            exit(-1);
+        }
+    }
+    else if (func_def_table.if_exist(this->func_call)) {
+        if (func_def_table.param_num(this->func_call) != func_r_param_list.func_r_params.size()) {
+            std::cout << "Semantic analysis failed: function '" << this->func_call << "' parameter not match when called.\n";
+            exit(-1);
+        }
     }
 
     this->error_mode = UNDF;

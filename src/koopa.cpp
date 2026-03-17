@@ -9,6 +9,9 @@ void Visitor_ast::ir_init(CompUnitAST& comp_unit) {
 }
 
 void Visitor_ast::ir_init(CompUnitListAST& comp_unit_list) {
+    // 把库函数的声明放入 IR
+    decl_lib_func();
+
     for (int i = 0; i < comp_unit_list.func_defs.size(); i++) {
         // 定义新的函数 IR
         this -> function = new FunctionIR();
@@ -31,8 +34,12 @@ void Visitor_ast::ir_init(ConstDeclAST& const_decl) {
 
 }
 
+// BType         ::= "int" | "void";
 void Visitor_ast::ir_init(BTypeAST& btype) {
-
+    // int 或 void，在 BType 做 FuncType 时需要交出自己的值
+    if (this -> if_func_def) {
+        this -> function -> function_type = btype.btype;
+    }
 }
 
 void Visitor_ast::ir_init(ConstDefListAST& const_def_list) {
@@ -93,7 +100,9 @@ void Visitor_ast::ir_init(InitValAST& init_val) {
 void Visitor_ast::ir_init(FuncDefAST& func_def) {
     init_states();
     // 返回值类型
-    func_def.func_type.get() -> accept(*this);
+    this -> if_func_def = true;
+    func_def.btype.get() -> accept(*this);
+    this -> if_func_def = false;
     // 函数名
     this -> function -> name = "@" + func_def.ident;
     // 把函数名和返回值类型记录到 func_table 中
@@ -126,12 +135,6 @@ void Visitor_ast::ir_init(FuncDefAST& func_def) {
         }
     }
 
-    return;
-}
-
-void Visitor_ast::ir_init(FuncTypeAST& func_type) {
-    // int 或 void
-    this -> function -> function_type = func_type.func_type;
     return;
 }
 
@@ -199,6 +202,10 @@ void Visitor_ast::ir_init(MatchedStmtAST_2& matched_stmt) {
         ValueIR_7* value = new ValueIR_7();
         value -> opcode = "ret";
         (this -> basic_block -> values).push_back(value);
+        (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+        this -> basic_block = new BasicBlockIR();
+        this -> basic_block -> name = "%return_" + std::to_string(this->return_num++);
         return;
     }
 
@@ -216,8 +223,7 @@ void Visitor_ast::ir_init(MatchedStmtAST_2& matched_stmt) {
     (this -> function -> basic_blocks).push_back(this -> basic_block);
 
     this -> basic_block = new BasicBlockIR();
-    this -> basic_block -> name = "%return_" + std::to_string(this->return_num);
-    this->return_num++;
+    this -> basic_block -> name = "%return_" + std::to_string(this->return_num++);
 
     return;
 }
