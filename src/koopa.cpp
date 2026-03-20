@@ -62,12 +62,12 @@ void Visitor_ast::ir_init(ConstDefListAST& const_def_list) {
 }
 
 // ConstDef      ::= IDENT "=" ConstInitVal;
-void Visitor_ast::ir_init(ConstDefAST& const_def) {
+void Visitor_ast::ir_init(ConstDefAST_1& const_def) {
 
 }
 
 // ConstInitVal  ::= ConstExp;
-void Visitor_ast::ir_init(ConstInitValAST& const_init_val) {
+void Visitor_ast::ir_init(ConstInitValAST_1& const_init_val) {
 
 }
 
@@ -138,7 +138,7 @@ void Visitor_ast::ir_init(VarDefAST_2& var_def) {
     }
 }
 
-void Visitor_ast::ir_init(InitValAST& init_val) {
+void Visitor_ast::ir_init(InitValAST_1& init_val) {
     init_val.exp.get() -> accept(*this);
 }
 
@@ -550,7 +550,7 @@ void Visitor_ast::ir_init(ExpAST& exp) {
     return;
 }
 
-void Visitor_ast::ir_init(LValAST& lval) {
+void Visitor_ast::ir_init(LValAST_1& lval) {
     // 只要进来了，就是变量，因为常量的 AST 路径是切断的
     if (this->lval_mode == LOAD) {
         ValueIR_3* value = new ValueIR_3();

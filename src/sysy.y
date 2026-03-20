@@ -39,6 +39,8 @@ using namespace std;
   CompUnitListAST* compunitlist_val;
   FuncFParamListAST* funcfparamlist_val;
   FuncRParamListAST* funcrparamlist_val;
+  ConstExpListAST* constexplist_val;
+  ExpListAST* explist_val;
 }
 
 // lexer 返回的所有 token 种类的声明
@@ -59,6 +61,8 @@ using namespace std;
 %type <funcfparamlist_val> FuncFParamList
 %type <funcrparamlist_val> FuncRParamList
 %type <ast_val> CompUnitItem
+%type <constexplist_val> ConstExpList
+%type <explist_val> ExpList
 
 %%
 
@@ -156,22 +160,52 @@ ConstDefList
   }
   ;
 
-// ConstDef      ::= IDENT "=" ConstInitVal;
+// ConstDef ::= IDENT "=" ConstInitVal | IDENT "[" ConstExp "]" "=" ConstInitVal;
 ConstDef
   : IDENT '=' ConstInitVal {
-    auto ast = new ConstDefAST();
+    auto ast = new ConstDefAST_1();
     ast -> ident = *unique_ptr<string>($1);
     ast -> constinitval = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
+  | IDENT "[" ConstExp "]" "=" ConstInitVal {
+    auto ast = new ConstDefAST_2();
+    ast -> ident = *unique_ptr<string>($1);
+    ast -> constexp = unique_ptr<BaseAST>($3);
+    ast -> constinitval = unique_ptr<BaseAST>($6);
+    $$ = ast;
+  }
   ;
 
-// ConstInitVal  ::= ConstExp;
+// ConstInitVal ::= ConstExp | "{" [ConstExpList] "}";
 ConstInitVal
   : ConstExp {
-    auto ast = new ConstInitValAST();
+    auto ast = new ConstInitValAST_1();
     ast -> constexp = unique_ptr<BaseAST>($1);
     $$ = ast;
+  }
+  | '{' '}' {
+    auto ast = new ConstInitValAST_2();
+    ast -> constexplist = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | '{' ConstExpList '}' {
+    auto ast = new ConstInitValAST_2();
+    ast -> constexplist = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  ;
+
+// ConstExpList ::= ConstExp | ConstExpList "," ConstExp
+ConstExpList
+  : ConstExp {
+    auto ast = new ConstExpListAST();
+    ast -> push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | ConstExpList ',' ConstExp {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
   }
   ;
 
@@ -198,7 +232,7 @@ VarDefList
   }
   ;
 
-// VarDef        ::= IDENT | IDENT "=" InitVal;
+// VarDef ::= IDENT | IDENT "=" InitVal | IDENT "[" ConstExp "]" | IDENT "[" ConstExp "]" "=" InitVal;
 VarDef
   : IDENT {
     auto ast = new VarDefAST_1();
@@ -211,14 +245,50 @@ VarDef
     ast -> initval = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
+  | IDENT '[' ConstExp ']' {
+    auto ast = new VarDefAST_3();
+    ast -> ident = *unique_ptr<string>($1);
+    ast -> constexp = unique_ptr<BaseAST>($3);
+    $$ = ast;
+  }
+  | IDENT '[' ConstExp ']' '=' InitVal {
+    auto ast = new VarDefAST_4();
+    ast -> ident = *unique_ptr<string>($1);
+    ast -> constexp = unique_ptr<BaseAST>($3);
+    ast -> initval = unique_ptr<BaseAST>($6);
+    $$ = ast;
+  }
   ;
 
-// InitVal       ::= Exp;
+// InitVal ::= Exp | "{" [ExpList] "}";
 InitVal
   : Exp {
-    auto ast = new InitValAST();
+    auto ast = new InitValAST_1();
     ast -> exp = unique_ptr<BaseAST>($1);
     $$ = ast;
+  }
+  | '{' '}' {
+    auto ast = new InitValAST_2();
+    ast -> explist = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | '{' ExpList '}' {
+    auto ast = new InitValAST_2();
+    ast -> explist = unique_ptr<BaseAST>($2);
+    $$ = ast;
+  }
+  ;
+
+// ExpList ::= Exp | ExpList "," Exp;
+ExpList
+  : Exp {
+    auto ast = new ExpListAST();
+    ast -> push_back(unique_ptr<BaseAST>($1));
+    $$ = ast;
+  }
+  | ExpList ',' Exp {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
   }
   ;
 
@@ -308,7 +378,6 @@ BlockItem
   }
   ;
 
-// Stmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block;
 // Stmt ::= MatchedStmt | UnmatchedStmt;
 Stmt
   : MatchedStmt {
@@ -414,11 +483,17 @@ Exp
   }
   ;
 
-// LVal          ::= IDENT;
+// LVal ::= IDENT | IDENT "[" Exp "]";
 LVal
   : IDENT {
-    auto ast = new LValAST();
+    auto ast = new LValAST_1();
     ast -> ident = *unique_ptr<string>($1);
+    $$ = ast;
+  }
+  | IDENT '[' Exp ']' {
+    auto ast = new LValAST_2();
+    ast -> ident = *unique_ptr<string>($1);
+    ast -> exp = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
   ;

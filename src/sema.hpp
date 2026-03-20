@@ -19,13 +19,13 @@ class DeclAST_2;
 class ConstDeclAST;
 class BTypeAST;
 class ConstDefListAST;
-class ConstDefAST;
-class ConstInitValAST;
+class ConstDefAST_1;
+class ConstInitValAST_1;
 class VarDeclAST;
 class VarDefListAST;
 class VarDefAST_1;
 class VarDefAST_2;
-class InitValAST;
+class InitValAST_1;
 
 class FuncDefAST;
 class FuncFParamListAST;
@@ -47,7 +47,7 @@ class MatchedStmtAST_8;
 class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
 class ExpAST;
-class LValAST;
+class LValAST_1;
 class PrimaryExpAST_1;
 class PrimaryExpAST_2;
 class PrimaryExpAST_3;
@@ -337,12 +337,17 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // ConstDecl     ::= "const" BType ConstDefList ";";
 // BType         ::= "int" | "void";
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
-// ConstDef      ::= IDENT "=" ConstInitVal;
-// ConstInitVal  ::= ConstExp;
+// ConstDef      ::= IDENT "=" ConstInitVal | IDENT "[" ConstExp "]" "=" ConstInitVal;
+// ConstInitVal  ::= ConstExp | "{" [ConstExpList] "}";
+// ConstExpList  ::= ConstExp | ConstExpList "," ConstExp
 // VarDecl       ::= BType VarDefList ";";
 // VarDefList    ::= VarDef | VarDefList "," VarDef;
-// VarDef        ::= IDENT | IDENT "=" InitVal;
-// InitVal       ::= Exp;
+// VarDef        ::= IDENT 
+//                 | IDENT "=" InitVal
+//                 | IDENT "[" ConstExp "]"
+//                 | IDENT "[" ConstExp "]" "=" InitVal;
+// InitVal       ::= Exp | "{" [ExpList] "}";
+// ExpList       ::= Exp | ExpList "," Exp;
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
@@ -354,7 +359,7 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
-// LVal          ::= IDENT;
+// LVal          ::= IDENT | IDENT "[" Exp "]";
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 // Number        ::= INT_CONST;
 // UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
@@ -451,13 +456,13 @@ class Visitor_sema {
     void sema_analysis(ConstDeclAST& const_decl);
     void sema_analysis(BTypeAST& btype);
     void sema_analysis(ConstDefListAST& const_def_list);
-    void sema_analysis(ConstDefAST& const_def);
-    void sema_analysis(ConstInitValAST& const_init_val);
+    void sema_analysis(ConstDefAST_1& const_def);
+    void sema_analysis(ConstInitValAST_1& const_init_val);
     void sema_analysis(VarDeclAST& var_decl);
     void sema_analysis(VarDefListAST& var_del_list);
     void sema_analysis(VarDefAST_1& var_def);
     void sema_analysis(VarDefAST_2& var_def);
-    void sema_analysis(InitValAST& init_val);
+    void sema_analysis(InitValAST_1& init_val);
 
     void sema_analysis(FuncDefAST& func_def);
     void sema_analysis(FuncFParamListAST& func_f_param_list);
@@ -479,7 +484,7 @@ class Visitor_sema {
     void sema_analysis(UnmatchedStmtAST_1& unmatched_stmt);
     void sema_analysis(UnmatchedStmtAST_2& unmatched_stmt);
     void sema_analysis(ExpAST& exp);
-    void sema_analysis(LValAST& lval);
+    void sema_analysis(LValAST_1& lval);
     void sema_analysis(PrimaryExpAST_1& primary_exp);
     void sema_analysis(PrimaryExpAST_2& primary_exp);
     void sema_analysis(PrimaryExpAST_3& primary_exp);

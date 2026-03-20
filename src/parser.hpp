@@ -213,8 +213,8 @@ class ConstDefListAST : public BaseAST {
     }
 };
 
-// ConstDef      ::= IDENT "=" ConstInitVal;
-class ConstDefAST : public BaseAST {
+// ConstDef ::= IDENT "=" ConstInitVal | IDENT "[" ConstExp "]" "=" ConstInitVal;
+class ConstDefAST_1 : public BaseAST {
   public:
     std::string ident;
     std::unique_ptr<BaseAST> constinitval;
@@ -234,9 +234,25 @@ class ConstDefAST : public BaseAST {
         visitor.sema_analysis(*this);
     }
 };
+class ConstDefAST_2 : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> constexp;
+    std::unique_ptr<BaseAST> constinitval;
 
-// ConstInitVal  ::= ConstExp;
-class ConstInitValAST : public BaseAST {
+    void Dump() const override {
+        std::cout << "ConstDef { ";
+        std::cout << ident << ", [ ";
+        constexp -> Dump();
+        std::cout << " ] = ";
+        constinitval -> Dump();
+        std::cout << " }";
+    }
+
+};
+
+// ConstInitVal ::= ConstExp | "{" [ConstExpList] "}";
+class ConstInitValAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> constexp;
 
@@ -253,6 +269,41 @@ class ConstInitValAST : public BaseAST {
     void accept(Visitor_sema& visitor) override {
         visitor.sema_analysis(*this);
     }
+};
+class ConstInitValAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> constexplist;
+
+    void Dump() const override {
+        std::cout << "ConstInitVal { ";
+        if (constexplist)
+            constexplist->Dump();
+        else
+            std::cout << "NULL";
+        std::cout << " }";
+    }
+
+};
+
+// ConstExpList ::= ConstExp | ConstExpList "," ConstExp
+class ConstExpListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> constexps;
+
+    void push_back(std::unique_ptr<BaseAST> constexp) {
+        constexps.push_back(std::move(constexp));
+    }
+
+    void Dump() const override {
+        std::cout << "ConstExpList { ";
+        for (int i = 0; i < constexps.size(); i++) {
+            constexps[i] -> Dump();
+            if (i != constexps.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
 };
 
 // VarDecl       ::= BType VarDefList ";";
@@ -306,7 +357,10 @@ class VarDefListAST : public BaseAST {
     }
 };
 
-// VarDef        ::= IDENT | IDENT "=" InitVal;
+// VarDef ::= IDENT 
+//          | IDENT "=" InitVal
+//          | IDENT "[" ConstExp "]"
+//          | IDENT "[" ConstExp "]" "=" InitVal;
 class VarDefAST_1 : public BaseAST {
   public:
     std::string ident;
@@ -344,9 +398,38 @@ class VarDefAST_2 : public BaseAST {
         visitor.sema_analysis(*this);
     }
 };
+class VarDefAST_3 : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> constexp;
 
-// InitVal       ::= Exp;
-class InitValAST : public BaseAST {
+    void Dump() const override {
+        std::cout << "VarDefAST { ";
+        std::cout << ident << ", [ ";
+        constexp -> Dump();
+        std::cout << " ] }";
+    }
+
+};
+class VarDefAST_4 : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> constexp;
+    std::unique_ptr<BaseAST> initval;
+
+    void Dump() const override {
+        std::cout << "VarDefAST { ";
+        std::cout << ident << ", [ ";
+        constexp -> Dump();
+        std::cout << " ], ";
+        initval -> Dump();
+        std::cout << " }";
+    }
+
+};
+
+// InitVal ::= Exp | "{" [ExpList] "}";
+class InitValAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
 
@@ -363,6 +446,41 @@ class InitValAST : public BaseAST {
     void accept(Visitor_sema& visitor) override {
         visitor.sema_analysis(*this);
     }
+};
+class InitValAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> explist;
+
+    void Dump() const override {
+        std::cout << "InitValAST { ";
+        if (explist)
+            explist->Dump();
+        else 
+            std::cout << "NULL";
+        std::cout << " }";
+    }
+
+};
+
+// ExpList ::= Exp | ExpList "," Exp;
+class ExpListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> exps;
+
+    void push_back(std::unique_ptr<BaseAST> exp) {
+        exps.push_back(std::move(exp));
+    }
+
+    void Dump() const override {
+        std::cout << "ExpList { ";
+        for (int i = 0; i < exps.size(); i++) {
+            exps[i] -> Dump();
+            if (i != exps.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
+    }
+
 };
 
 // FuncDef     ::= BType IDENT "(" [FuncFParamList] ")" Block;
@@ -794,8 +912,8 @@ class ExpAST : public BaseAST {
     }
 };
 
-// LVal          ::= IDENT;
-class LValAST : public BaseAST {
+// LVal ::= IDENT | IDENT "[" Exp "]";
+class LValAST_1 : public BaseAST {
   public:
     std::string ident;
 
@@ -810,6 +928,18 @@ class LValAST : public BaseAST {
     void accept(Visitor_sema& visitor) override {
         visitor.sema_analysis(*this);
     }
+};
+class LValAST_2 : public BaseAST {
+  public:
+    std::string ident;
+    std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {
+        std::cout << "LValAST { " << ident << ", [ ";
+        exp -> Dump();
+        std::cout << " ] }";
+    }
+
 };
 
 // PrimaryExp  ::= "(" Exp ")" | LVal | Number;

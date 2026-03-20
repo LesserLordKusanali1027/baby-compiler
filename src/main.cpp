@@ -39,18 +39,18 @@ int main(int argc, const char *argv[]) {
     assert(!ret);
 
     // dump AST
-    // ast -> Dump();
-    // cout << endl;
+    ast -> Dump();
+    cout << endl;
 
     // 由 AST 生成 Koopa IR
     CompUnitAST* fd = dynamic_cast<CompUnitAST*>(ast.get());
     Visitor_sema visitor_sema;
-    fd -> accept(visitor_sema);
+    // fd -> accept(visitor_sema);
     // ast -> Dump();
     // cout << endl;
 
     Visitor_ast visitor_ast;
-    fd -> accept(visitor_ast);
+    // fd -> accept(visitor_ast);
 
     if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
         ofstream out_file(output);

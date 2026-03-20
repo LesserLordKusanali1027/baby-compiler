@@ -60,7 +60,7 @@ void Visitor_sema::sema_analysis(ConstDefListAST& const_def_list) {
 }
 
 // ConstDef      ::= IDENT "=" ConstInitVal;
-void Visitor_sema::sema_analysis(ConstDefAST& const_def) {
+void Visitor_sema::sema_analysis(ConstDefAST_1& const_def) {
     if (symbol_table_stack.if_exist_last(const_def.ident)) {
         std::cout << "Semantic analysis failed: '" << const_def.ident << "' redefined.\n";
         exit(-1);
@@ -78,7 +78,7 @@ void Visitor_sema::sema_analysis(ConstDefAST& const_def) {
 }
 
 // ConstInitVal  ::= ConstExp;
-void Visitor_sema::sema_analysis(ConstInitValAST& const_init_val) {
+void Visitor_sema::sema_analysis(ConstInitValAST_1& const_init_val) {
     const_init_val.constexp.get() -> accept(*this);
 }
 
@@ -125,7 +125,7 @@ void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
 
         // 修改 AST 树
         // 先新建节点
-        auto init_val = std::make_unique<InitValAST>();
+        auto init_val = std::make_unique<InitValAST_1>();
         auto exp = std::make_unique<ExpAST>();
         auto l_or_exp = std::make_unique<LOrExpAST_1>();
         auto l_and_exp = std::make_unique<LAndExpAST_1>();
@@ -160,7 +160,7 @@ void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
 }
 
 // InitVal       ::= Exp;
-void Visitor_sema::sema_analysis(InitValAST& init_val) {
+void Visitor_sema::sema_analysis(InitValAST_1& init_val) {
     init_val.exp.get() -> accept(*this);
 }
 
@@ -351,7 +351,7 @@ void Visitor_sema::sema_analysis(ExpAST& exp) {
 }
 
 // LVal          ::= IDENT;
-void Visitor_sema::sema_analysis(LValAST& lval) {
+void Visitor_sema::sema_analysis(LValAST_1& lval) {
     // 先进行报错检测
     if (!symbol_table_stack.if_exist_all(lval.ident)) {
         std::cout << "Semantic analysis failed: ident '" << lval.ident << "' not defined.\n";
