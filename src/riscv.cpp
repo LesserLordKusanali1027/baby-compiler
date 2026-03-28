@@ -80,6 +80,14 @@ void Visitor_ir::stack_setup(FunctionIR& function) {
                     var_space += 4;
                 }
             }
+            else if (dynamic_cast<ValueIR_8*>(basic_block->values[j])) {
+                ValueIR_8* value = dynamic_cast<ValueIR_8*>(basic_block->values[j]);
+                int size = 1;
+                for (int i = 0; i < (value->operand2s).size(); i++) // 计算有多少个 int
+                    size *= value->operand2s[i];
+                var_offset[value->target] = var_space;
+                var_space += 4*size;
+            }
 
             // 计算 a0_space 和 param_space
             if (dynamic_cast<ValueIR_6*>(basic_block->values[j])) {
@@ -117,7 +125,7 @@ void Visitor_ir::riscv_get(ProgramIR& program) {
     }
 }
 
-void Visitor_ir::riscv_get(GlobalIR& global) {
+void Visitor_ir::riscv_get(GlobalIR_1& global) {
     // 放到 data 里面
     file << "  .data\n";
     file << "  .globl " << global.name.substr(1) << '\n';
@@ -131,6 +139,24 @@ void Visitor_ir::riscv_get(GlobalIR& global) {
 
     // 记录到全局变量表中，供 store 和 load 使用
     this -> global_vars[global.name] = 1;
+}
+
+void Visitor_ir::riscv_get(GlobalIR_2& global) {
+    file << "  .data\n";
+    file << "  .globl " << global.name.substr(1) << '\n';
+    file << global.name.substr(1) << ":\n";
+    for (int i = 0; i < global.init_val.size(); i++)
+        file << "  .word " << global.init_val[i] << '\n';
+
+    file << '\n';
+    // 记录到全局变量表中，供 store 和 load 使用
+    this -> global_vars[global.name] = 1;
+
+    // 记录到 array_info 中
+    array_info.Add_Array(global.size, global.name);
+    array_info.Add_Symbol(global.name);
+    // 再记录到 global_arrays 中
+    global_arrays[global.name] = 1;
 }
 
 void Visitor_ir::riscv_get(FunctionIR& function) {
@@ -165,6 +191,9 @@ void Visitor_ir::riscv_get(FunctionIR& function) {
     param_name.clear();
     
     file << "\n";
+
+    // 清空 array_info 中的临时符号
+    array_info.CleanSymbol();
 }
 
 void Visitor_ir::riscv_get(BasicBlockIR& basic_block) {
@@ -296,6 +325,48 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         file << "  sw    " << register_name[dest] << ", "
              << var_offset[value.target] << "(sp)\n";
     }
+    else if (value.opcode == "getelemptr") {
+        if (value.operand2[0] == '%') {
+            file << "  lw    " << register_name[current_register++] << ", "
+                 << var_offset[value.operand2] << "(sp)\n";
+        }
+        else {
+            file << "  li    " << register_name[current_register++] << ", "
+                 << value.operand2 << '\n';
+        }
+
+        // 获得偏移单位
+        int size = array_info.Get_Size(value.operand1);
+
+        file << "  li    " << register_name[current_register] << ", " << size << "\n";
+
+        file << "  mul   " << register_name[current_register] << ", "
+             << register_name[current_register-1] << ", " << register_name[current_register] << '\n';
+
+        // 如果是全局数组
+        if (global_arrays.count(value.operand1)) {
+            file << "  la    " << register_name[current_register+1] << ", "
+                 << value.operand1.substr(1) << '\n';
+        }
+        else if (value.operand1[0] == '@') { // 局部数组
+            file << "  addi  " << register_name[current_register+1] << ", sp, "
+                 << var_offset[value.operand1] << '\n';
+        }
+        else if (value.operand1[0] == '%') { // 临时符号
+            file << "  lw    " << register_name[current_register+1] << ", "
+                 << var_offset[value.operand1] << "(sp)\n";
+        }
+        
+        file << "  add   " << register_name[current_register+1] << ", "
+             << register_name[current_register] << ", "
+             << register_name[current_register+1] << '\n';
+
+        file << "  sw    " << register_name[current_register+1] << ", "
+             << var_offset[value.target] << "(sp)\n";
+
+        // 记录新符号
+        array_info.Add_Symbol(value.target, value.operand1);
+    }
 
     current_register = 1;
 }
@@ -306,6 +377,14 @@ void Visitor_ir::riscv_get(ValueIR_3& value) {
         if (global_vars.count(value.operand)) { // load 的是全局变量时
             file << "  la    " << register_name[current_register] << ", "
                  << value.operand.substr(1) << '\n';
+            file << "  lw    " << register_name[current_register] << ", "
+                 << "0(" << register_name[current_register] << ")\n";
+            file << "  sw    " << register_name[current_register] << ", "
+                 << var_offset[value.target] << "(sp)\n";
+        }
+        else if (value.operand[0] == '%') { // 先认为 %1 = load %0 只会出现在 %0 为指针的时候
+            file << "  lw    " << register_name[current_register] << ", "
+                 << var_offset[value.operand] << "(sp)\n";
             file << "  lw    " << register_name[current_register] << ", "
                  << "0(" << register_name[current_register] << ")\n";
             file << "  sw    " << register_name[current_register] << ", "
@@ -352,7 +431,21 @@ void Visitor_ir::riscv_get(ValueIR_4& value) {
             file << "  sw    " << register_name[current_register] << ", "
                  << "0(" << register_name[current_register+1] << ")\n";
         }
-        else if (value.operand1[0]!='%' && value.operand1[0]!='@') {
+        else if (value.operand2[0] == '%') { // 为临时符号，目前 store 好像 operand2 不是 @ 就是 %
+            if (value.operand1[0]!='%' && value.operand1[0]!='@') { // 数字
+                file << "  li    " << register_name[current_register] << ", "
+                     << value.operand1 << '\n';
+            }
+            else {
+                file << "  lw    " << register_name[current_register] << ", "
+                     << var_offset[value.operand1] << "(sp)\n";
+            }
+            file << "  lw    " << register_name[current_register+1] << ", "
+                 << var_offset[value.operand2] << "(sp)\n";
+            file << "  sw    " << register_name[current_register] << ", "
+                 << "0(" << register_name[current_register+1] << ")\n";
+        }
+        else if (value.operand1[0]!='%' && value.operand1[0]!='@') { // 数字
             file << "  li    " << register_name[current_register] << ", "
                  << value.operand1 << '\n';
             file << "  sw    " << register_name[current_register] << ", "
@@ -434,4 +527,11 @@ void Visitor_ir::riscv_get(ValueIR_7& value) {
     if (stack_frame != 0)
         file << "  addi  sp, sp, " << this->stack_frame << '\n';
     file << "  ret\n";
+}
+
+// 数组 alloc 指令
+void Visitor_ir::riscv_get(ValueIR_8& value) {
+    // 记录到 array_info 中
+    array_info.Add_Array(value.operand2s, value.target);
+    array_info.Add_Symbol(value.target);
 }

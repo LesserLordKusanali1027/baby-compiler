@@ -20,12 +20,21 @@ class ConstDeclAST;
 class BTypeAST;
 class ConstDefListAST;
 class ConstDefAST_1;
+class ConstDefAST_2;
+class ConstSizeListAST;
 class ConstInitValAST_1;
+class ConstInitValAST_2;
+class ConstInitValListAST;
 class VarDeclAST;
 class VarDefListAST;
 class VarDefAST_1;
 class VarDefAST_2;
+class VarDefAST_3;
+class VarDefAST_4;
+class VarSizeListAST;
 class InitValAST_1;
+class InitValAST_2;
+class InitValListAST;
 
 class FuncDefAST;
 class FuncFParamListAST;
@@ -48,6 +57,8 @@ class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
 class ExpAST;
 class LValAST_1;
+class LValAST_2;
+class ExpListAST;
 class PrimaryExpAST_1;
 class PrimaryExpAST_2;
 class PrimaryExpAST_3;
@@ -71,84 +82,229 @@ class LOrExpAST_1;
 class LOrExpAST_2;
 class ConstExpAST;
 
+
+// 常量、变量信息
+class SymbolInfo {
+  public:
+    // 常量、变量类型
+    enum SymbolType { CONST = 0, VAR, CONST_ARRAY, VAR_ARRAY};
+    // 值的类型
+    using Value = std::variant<int, std::string>;
+  private:
+    SymbolType symbol_type;
+    Value symbol_value;
+    int array_dim; // 专门为数组添加
+  public:
+    // 添加符号信息
+    void add_const (int value) {
+        symbol_type = CONST;
+        symbol_value = value;
+    }
+    void add_var (std::string& value) {
+        symbol_type = VAR;
+        symbol_value = value;
+    }
+    void add_const_array (std::string& value) {
+        symbol_type = CONST_ARRAY;
+        symbol_value = value;
+    }
+    void add_var_array (std::string& value) {
+        symbol_type = VAR_ARRAY;
+        symbol_value = value;
+    }
+
+    // 判断类型
+    bool if_const () {
+        return symbol_type == CONST;
+    }
+    bool if_var () {
+        return symbol_type == VAR;
+    }
+    bool if_const_array () {
+        return symbol_type == CONST_ARRAY;
+    }
+    bool if_var_array () {
+        return symbol_type == VAR_ARRAY;
+    }
+
+    // 取得内容
+    int get_const () {
+        return std::get<int>(symbol_value);
+    }
+    std::string get_var () {
+        return std::get<std::string>(symbol_value);
+    }
+    std::string get_const_array () {
+        return std::get<std::string>(symbol_value);
+    }
+    std::string get_var_array () {
+        return std::get<std::string>(symbol_value);
+    }
+
+    // 添加数组维度
+    void add_array_dim(int dim) {
+        array_dim = dim;
+    }
+    // 获取数组维度
+    int get_array_dim() {
+        return array_dim;
+    }
+};
+
 // 常量/变量符号表类
 class SymbolTable {
   public:
     using Value = std::variant<int, std::string>;
   private:
-    std::unordered_map<std::string, Value> table;
+    std::unordered_map<std::string, SymbolInfo*> table;
   public:
-    ~SymbolTable() {
+    ~SymbolTable () {
         table.clear();
     }
-    // 添加常量和变量
-    void add_const(std::string& name, int value) {
-        table[name] = value; // Value 会自动识别的
+
+    // 添加常量和变量、常量数组和变量数组
+    void add_const (std::string& name, int value) {
+        SymbolInfo* symbol_info = new SymbolInfo();
+        table[name] = symbol_info;
+        table[name] -> add_const(value);
+        symbol_info = NULL;
     }
-    void add_var(std::string& name, std::string value) {
-        table[name] = value;
+    void add_var (std::string& name, std::string value) {
+        SymbolInfo* symbol_info = new SymbolInfo();
+        table[name] = symbol_info;
+        table[name] -> add_var(value);
+        symbol_info = NULL;
+    }
+    void add_const_array (std::string& name, std::string value) {
+        SymbolInfo* symbol_info = new SymbolInfo();
+        table[name] = symbol_info;
+        table[name] -> add_const_array(value);
+        symbol_info = NULL;
+    }
+    void add_var_array (std::string& name, std::string value) {
+        SymbolInfo* symbol_info = new SymbolInfo();
+        table[name] = symbol_info;
+        table[name] -> add_var_array(value);
+        symbol_info = NULL;
     }
 
     // 检查键是否存在
-    bool if_exist(std::string& name) {
+    bool if_exist (std::string& name) {
         return (bool)table.count(name);
     }
 
-    // 判断是常量还是变量
-    bool if_const(std::string& name) {
-        return std::holds_alternative<int>(table[name]);
+    // 判断是常量还是变量，是常量数组还是变量数组，但后面估计用不到
+    bool if_const (std::string& name) {
+        return table[name] -> if_const();
     }
-    bool if_var(std::string& name) {
-        return std::holds_alternative<std::string>(table[name]);
+    bool if_var (std::string& name) {
+        return table[name] -> if_var();
+    }
+    bool if_const_array (std::string& name) {
+        return table[name] -> if_const_array();
+    }
+    bool if_var_array (std::string& name) {
+        return table[name] -> if_var_array();
     }
 
-    // 返回结果
-    int get_const(std::string& name) {
-        return std::get<int>(table[name]);
+    // 返回值，类型检查保险措施放在这里，后面就不用再写了
+    int get_const (std::string& name) {
+        if (!(table[name] -> if_const())) {
+            std::cout << "Symbol table has a mistake: '" << name << "' isn't regarded as a const, which is the developer's fault.\n";
+            exit(-2);
+        }
+        return table[name] -> get_const();
     }
-    std::string get_var(std::string& name) {
-        return std::get<std::string>(table[name]);
+    std::string get_var (std::string& name) {
+        if (!(table[name] -> if_var())) {
+            std::cout << "Symbol table has a mistake: '" << name << "' isn't regarded as a var, which is the developer's fault.\n";
+            exit(-2);
+        }
+        return table[name] -> get_var();
+    }
+    std::string get_const_array (std::string& name) {
+        if (!(table[name] -> if_const_array())) {
+            std::cout << "Symbol table has a mistake: '" << name << "' isn't regarded as a const array, which is the developer's fault.\n";
+            exit(-2);
+        }
+        return table[name] -> get_const_array();
+    }
+    std::string get_var_array (std::string& name) {
+        if (!(table[name] -> if_var_array())) {
+            std::cout << "Symbol table has a mistake: '" << name << "' isn't regarded as a var array, which is the developer's fault.\n";
+            exit(-2);
+        }
+        return table[name] -> get_var_array();
+    }
+
+    // 数组相关操作
+    void add_array_dim(std::string& name, int dim) {
+        if (!(table[name] -> if_const_array()) && !(table[name] -> if_var_array())) {
+            std::cout << "Symbol table has a mistake: '" << name << "' isn't an array, which is the developer's fault.\n";
+            exit(-2);
+        }
+        table[name] -> add_array_dim(dim);
+    }
+    int get_array_dim(std::string& name) {
+        if (!(table[name] -> if_const_array()) && !(table[name] -> if_var_array())) {
+            std::cout << "Symbol table has a mistake: '" << name << "' isn't an array, which is the developer's fault.\n";
+            exit(-2);
+        }
+        return table[name] -> get_array_dim();
     }
 };
+
 // 多层常量/变量符号表
 class SymbolTableStack {
   private:
     std::vector<SymbolTable*> table_stack;
-    // 记录出现过的同名变量的数目，以便添加编号
-    std::unordered_map<std::string, int> var_count;
+    // 记录出现过的同名的变量、数组的数目，以便添加编号
+    std::unordered_map<std::string, int> symbol_count;
 
   public:
-    ~SymbolTableStack() { // 释放内存
+    ~SymbolTableStack () { // 释放内存
         for (int i = 0; i < table_stack.size(); i++) {
             delete table_stack[i];
         }
     }
     
     // 添加、删除单个符号表
-    void push_table() {
+    void push_table () {
         SymbolTable* table = new SymbolTable();
         table_stack.push_back(table);
     }
-    void pop_table() {
+    void pop_table () {
         SymbolTable* table = table_stack.back();
         table_stack.pop_back();
         delete table;
     }
 
-    // 向位于最后的符号表添加常量和变量
-    void add_const(std::string& name, int value) {
+    // 向位于最后的符号表添加常量、变量和常量数组、变量数组
+    void add_const (std::string& name, int value) {
         SymbolTable* table = table_stack.back();
         table -> add_const(name, value);
     }
-    void add_var(std::string& name) {
+    void add_var (std::string& name) {
         SymbolTable* table = table_stack.back();
-        var_count[name]++;
-        std::string value = name + "_" + std::to_string(var_count[name]);
+        symbol_count[name]++;
+        std::string value = name + "_" + std::to_string(symbol_count[name]);
         table -> add_var(name, value);
+    }
+    void add_const_array (std::string& name) {
+        SymbolTable* table = table_stack.back();
+        symbol_count[name]++;
+        std::string value = name + "_" + std::to_string(symbol_count[name]);
+        table -> add_const_array(name, value);
+    }
+    void add_var_array (std::string& name) {
+        SymbolTable* table = table_stack.back();
+        symbol_count[name]++;
+        std::string value = name + "_" + std::to_string(symbol_count[name]);
+        table -> add_var_array(name, value);
     }
 
     // 工具函数，返回存在某个符号的最近符号表的索引
-    int get_index(std::string& name) {
+    int get_index (std::string& name) {
         int index;
         for (index = table_stack.size()-1; index >= 0; index--) {
             if (table_stack[index]->if_exist(name))
@@ -158,48 +314,71 @@ class SymbolTableStack {
     }
 
     // 检查键是否存在
-    bool if_exist_last(std::string& name) {
-        return table_stack.back()->if_exist(name);
+    bool if_exist_last (std::string& name) { // 在最后的符号表中
+        return table_stack.back() -> if_exist(name);
     }
-    bool if_exist_all(std::string& name) {
+    bool if_exist_all (std::string& name) { // 在所有符号表中
         int index = get_index(name);
         return index == -1 ? false : true;
     }
 
-    // 判断是常量还是变量
-    bool if_const(std::string& name) {
+    // 判断符号代表的是常量/变量还是常量数组/变量数组
+    bool if_const (std::string& name) {
         int index = get_index(name);
-        
-        return table_stack[index]->if_const(name);
+
+        return table_stack[index] -> if_const(name);
     }
-    bool if_var(std::string& name) {
+    bool if_var (std::string& name) {
         int index = get_index(name);
-        
-        return table_stack[index]->if_var(name);
+
+        return table_stack[index] -> if_var(name);
+    }
+    bool if_const_array (std::string& name) {
+        int index = get_index(name);
+
+        return table_stack[index] -> if_const_array(name);
+    }
+    bool if_var_array (std::string& name) {
+        int index = get_index(name);
+
+        return table_stack[index] -> if_var_array(name);
     }
 
     // 返回结果
-    int get_const(std::string& name) {
-        if (if_var(name)) {
-            std::cout << "Symbol table has a mistake: '" << name << "' is recorded as a var, not a const.\n";
-            exit(-1); 
-        }
-
+    int get_const (std::string& name) {
         int index = get_index(name);
 
         return table_stack[index] -> get_const(name);
     }
-    std::string get_var(std::string& name) {
-        if (if_const(name)) {
-            std::cout << "Symbol table has a mistake: '" << name << "' is recorded as a const, not a var.\n";
-            exit(-1);
-        }
-
+    std::string get_var (std::string& name) {
         int index = get_index(name);
 
         return table_stack[index] -> get_var(name);
     }
+    std::string get_const_array (std::string& name) {
+        int index = get_index(name);
+
+        return table_stack[index] -> get_const_array(name);
+    }
+    std::string get_var_array (std::string& name) {
+        int index = get_index(name);
+
+        return table_stack[index] -> get_var_array(name);
+    }
+
+    // 数组相关操作
+    void add_array_dim(std::string& name, int dim) {
+        int index = get_index(name);
+
+        table_stack[index] -> add_array_dim(name, dim);
+    }
+    int get_array_dim(std::string& name) {
+        int index = get_index(name);
+
+        return table_stack[index] -> get_array_dim(name);
+    }
 };
+
 
 // 记录函数信息的类
 class FunctionInfo {
@@ -233,6 +412,7 @@ class FunctionInfo {
         return params_count;
     }
 };
+
 // 函数符号表类 (全局单层)
 class FunctionTable {
   private:
@@ -277,6 +457,7 @@ class FunctionTable {
         return table[name] -> if_int();
     }
 };
+
 // 函数声明符号表类
 class FunctionDeclTable {
   private:
@@ -326,8 +507,13 @@ class FunctionDeclTable {
     }
 };
 
-// 定义枚举类型，用于设定检查模式
-enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
+// 常量数组初始化列表标准化要使用的方法类，在 sema.cpp 中实现
+class ConstInitVal_Std;
+// 变量数组初始化列表标准化要使用的方法类，在 sema.cpp 中实现
+class InitVal_Std;
+
+// 定义枚举类型，用于设定错误检查模式
+enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRAY_ARRAY_UNDF };
 
 // CompUnit      ::= CompUnitList;
 // CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
@@ -337,29 +523,32 @@ enum Mode { NONE = 0, VAR_UNDF, CONST_UNDF, UNDF };
 // ConstDecl     ::= "const" BType ConstDefList ";";
 // BType         ::= "int" | "void";
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
-// ConstDef      ::= IDENT "=" ConstInitVal | IDENT "[" ConstExp "]" "=" ConstInitVal;
-// ConstInitVal  ::= ConstExp | "{" [ConstExpList] "}";
-// ConstExpList  ::= ConstExp | ConstExpList "," ConstExp
+// ConstDef      ::= IDENT "=" ConstInitVal | IDENT ConstSizeList "=" ConstInitVal;
+// ConstSizeList ::= "[" ConstExp "]" | ConstSizeList "[" ConstExp "]";
+// ConstInitVal  ::= ConstExp | "{" [ConstInitValList] "}";
+// ConstInitValList ::= ConstInitVal | ConstInitValList "," ConstInitVal;
 // VarDecl       ::= BType VarDefList ";";
 // VarDefList    ::= VarDef | VarDefList "," VarDef;
 // VarDef        ::= IDENT 
 //                 | IDENT "=" InitVal
-//                 | IDENT "[" ConstExp "]"
-//                 | IDENT "[" ConstExp "]" "=" InitVal;
-// InitVal       ::= Exp | "{" [ExpList] "}";
-// ExpList       ::= Exp | ExpList "," Exp;
+//                 | IDENT VarSizeList
+//                 | IDENT VarSizeList "=" InitVal;
+// VarSizeList   ::= "[" ConstExp "]" | VarSizeList "[" ConstExp "]";
+// InitVal       ::= Exp | "{" [InitValList] "}";
+// InitValList   ::= InitVal | InitValList "," InitVal;
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
 // FuncFParam    ::= BType IDENT;
 // Block         ::= "{" BlockItemList "}";
-// BlockItemList ::= %empty | BlockItemList BlockItem
+// BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
 // MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
-// LVal          ::= IDENT | IDENT "[" Exp "]";
+// LVal          ::= IDENT | IDENT ExpList;
+// ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 // Number        ::= INT_CONST;
 // UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
@@ -378,9 +567,9 @@ class Visitor_sema {
     // 表达式计算相关
     std::stack<int> stk; // 计算用的栈
     int num; // 用来把 LVal 换成 Number 的变量
-    char ch; //传递计算符号
+    char ch; // 传递计算符号
     bool cal_mode = false; // 计算模式是否开启
-    Mode error_mode = NONE; // 报错检测模式
+    ErrorMode error_mode = NONE; // 报错检测模式
     bool if_fold = false; // 是否常量折叠
 
     // 循环相关
@@ -443,9 +632,18 @@ class Visitor_sema {
     // 全局常量、变量相关
     bool global_decl; // 告诉 DeclAST 定义的是全局常量、变量
 
+    // 数组相关
+    // 将常量数组的初始化列表标准化
+    ConstInitVal_Std* const_init_val_std;
+    // 将变量数组的初始化列表标准化
+    InitVal_Std* init_val_std;
+    // 传递数组名
+    std::string array_name;
+    // 记录数组维度用于判断 a[][] 这种是否正确
+    std::unordered_map<std::string, int> array_dimension;
+    
   public:
-
-    // 以下函数用来遍历语法树生成符号表，并将 LValAST 替换成 NumberAST
+    // 以下函数用来遍历语法树生成符号表
     void sema_analysis(CompUnitAST& comp_unit);
     void sema_analysis(CompUnitListAST& comp_unit_list);
     void sema_analysis(CompUnitItemAST_1& comp_unit_item);
@@ -457,12 +655,21 @@ class Visitor_sema {
     void sema_analysis(BTypeAST& btype);
     void sema_analysis(ConstDefListAST& const_def_list);
     void sema_analysis(ConstDefAST_1& const_def);
+    void sema_analysis(ConstDefAST_2& const_def);
+    void sema_analysis(ConstSizeListAST& const_size_list);
     void sema_analysis(ConstInitValAST_1& const_init_val);
+    void sema_analysis(ConstInitValAST_2& const_init_val);
+    void sema_analysis(ConstInitValListAST& const_init_val_list);
     void sema_analysis(VarDeclAST& var_decl);
     void sema_analysis(VarDefListAST& var_del_list);
     void sema_analysis(VarDefAST_1& var_def);
     void sema_analysis(VarDefAST_2& var_def);
+    void sema_analysis(VarDefAST_3& var_def);
+    void sema_analysis(VarDefAST_4& var_def);
+    void sema_analysis(VarSizeListAST& var_size_list);
     void sema_analysis(InitValAST_1& init_val);
+    void sema_analysis(InitValAST_2& init_val);
+    void sema_analysis(InitValListAST& init_val_list);
 
     void sema_analysis(FuncDefAST& func_def);
     void sema_analysis(FuncFParamListAST& func_f_param_list);
@@ -485,6 +692,8 @@ class Visitor_sema {
     void sema_analysis(UnmatchedStmtAST_2& unmatched_stmt);
     void sema_analysis(ExpAST& exp);
     void sema_analysis(LValAST_1& lval);
+    void sema_analysis(LValAST_2& lval);
+    void sema_analysis(ExpListAST& exp_list);
     void sema_analysis(PrimaryExpAST_1& primary_exp);
     void sema_analysis(PrimaryExpAST_2& primary_exp);
     void sema_analysis(PrimaryExpAST_3& primary_exp);

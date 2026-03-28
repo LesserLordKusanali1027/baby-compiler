@@ -21,12 +21,21 @@ class ConstDeclAST;
 class BTypeAST;
 class ConstDefListAST;
 class ConstDefAST_1;
+class ConstDefAST_2;
+class ConstSizeListAST;
 class ConstInitValAST_1;
+class ConstInitValAST_2;
+class ConstInitValListAST;
 class VarDeclAST;
 class VarDefListAST;
 class VarDefAST_1;
 class VarDefAST_2;
+class VarDefAST_3;
+class VarDefAST_4;
+class VarSizeListAST;
 class InitValAST_1;
+class InitValAST_2;
+class InitValListAST;
 
 class FuncDefAST;
 class FuncFParamListAST;
@@ -49,6 +58,8 @@ class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
 class ExpAST;
 class LValAST_1;
+class LValAST_2;
+class ExpListAST;
 class PrimaryExpAST_1;
 class PrimaryExpAST_2;
 class PrimaryExpAST_3;
@@ -118,7 +129,7 @@ class ProgramIR : public BaseIR {
     }
 };
 
-class GlobalIR : public BaseIR {
+class GlobalIR_1 : public BaseIR {
   public:
     std::string name;
     std::string type;
@@ -136,6 +147,96 @@ class GlobalIR : public BaseIR {
         if (type == "int")
             file << "i32, ";
         file << init_val << '\n';
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
+class GlobalIR_2 : public BaseIR {
+  private:
+    void Dump_init(int depth, int& val_idx) const {
+        // 最内层维度：直接打印数值
+        if (depth == size.size() - 1) {
+            std::cout << "{";
+            for (int i = 0; i < size[depth]; ++i) {
+                std::cout << init_val[val_idx++];
+                if (i != size[depth] - 1)
+                    std::cout << ", ";
+            }
+            std::cout << "}";
+            return;
+        }
+
+        // 外层维度：递归嵌套
+        std::cout << "{";
+        for (int i = 0; i < size[depth]; ++i) {
+            Dump_init(depth + 1, val_idx);
+            if (i != size[depth] - 1)
+                std::cout << ", ";
+        }
+        std::cout << "}";
+    }
+    void Dump_init_file(std::ofstream& file, int depth, int& val_idx) {
+        // 最内层维度：直接打印数值
+        if (depth == size.size() - 1) {
+            file << "{";
+            for (int i = 0; i < size[depth]; ++i) {
+                file << init_val[val_idx++];
+                if (i != size[depth] - 1)
+                    file << ", ";
+            }
+            file << "}";
+            return;
+        }
+
+        // 外层维度：递归嵌套
+        file << "{";
+        for (int i = 0; i < size[depth]; ++i) {
+            Dump_init_file(file, depth + 1, val_idx);
+            if (i != size[depth] - 1)
+                file << ", ";
+        }
+        file << "}";
+    }
+  public:
+    std::string name; // @ 开头的
+    std::string type; // 其实也只有一种可能 int
+    std::vector<int> size;
+    std::vector<std::string> init_val;
+
+    void Dump() const override {
+        std::cout << "global " << name << " = alloc ";
+        for (int i = 0; i < size.size(); i++) {
+            std::cout << "[";
+        }
+        if (type == "int")
+            std::cout << "i32";
+        for (int i = size.size()-1; i >= 0; i--) {
+            std::cout << ", " << size[i] << "]";
+        }
+        std::cout << ", ";
+        int val_idx = 0; // 遍历init_val的索引
+        Dump_init(0, val_idx); // 递归输出
+        
+        std::cout << "\n";
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        file << "global " << name << " = alloc ";
+        for (int i = 0; i < size.size(); i++) {
+            file << "[";
+        }
+        if (type == "int")
+            file << "i32";
+        for (int i = size.size()-1; i >= 0; i--) {
+            file << ", " << size[i] << "]";
+        }
+        file << ", ";
+        int val_idx = 0; // 遍历init_val的索引
+        Dump_init_file(file, 0, val_idx); // 递归输出
+        
+        file << "\n";
     }
 
     void accept(Visitor_ir& visitor) override {
@@ -431,6 +532,44 @@ class ValueIR_7 : public BaseIR {
         visitor.riscv_get(*this);
     }
 };
+class ValueIR_8 : public BaseIR {
+    // 用来放 @arr = alloc [i32, 5] 这种数组的 alloc 指令
+  public:
+    std::string opcode;
+    std::string operand1; // 种类，其实这里就固定是 i32 了
+    std::vector<int> operand2s; // a[2][3][4] 这种方便起见就从前往后存，输出的时候从后往前输出
+    std::string target;
+
+    void Dump() const override {
+        std::cout << "  " << target << " = ";
+        std::cout << opcode << " ";
+        for (int i = 0; i < operand2s.size(); i++) {
+            std::cout << "[";
+        }
+        std::cout << operand1;
+        for (int i = operand2s.size()-1; i >= 0; i--) {
+            std::cout << ", " << operand2s[i] << "]";
+        }
+        std::cout << '\n';
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        file << "  " << target << " = ";
+        file << opcode << " ";
+        for (int i = 0; i < operand2s.size(); i++) {
+            file << "[";
+        }
+        file << operand1;
+        for (int i = operand2s.size()-1; i >= 0; i--) {
+            file << ", " << operand2s[i] << "]";
+        }
+        file << '\n';
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
 
 enum LVal_Mode { START = 0, LOAD, STORE };
 
@@ -442,24 +581,32 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // ConstDecl     ::= "const" BType ConstDefList ";";
 // BType         ::= "int" | "void";
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
-// ConstDef      ::= IDENT "=" ConstInitVal;
-// ConstInitVal  ::= ConstExp;
+// ConstDef      ::= IDENT "=" ConstInitVal | IDENT ConstSizeList "=" ConstInitVal;
+// ConstSizeList ::= "[" ConstExp "]" | ConstSizeList "[" ConstExp "]";
+// ConstInitVal  ::= ConstExp | "{" [ConstInitValList] "}";
+// ConstInitValList ::= ConstInitVal | ConstInitValList "," ConstInitVal;
 // VarDecl       ::= BType VarDefList ";";
 // VarDefList    ::= VarDef | VarDefList "," VarDef;
-// VarDef        ::= IDENT | IDENT "=" InitVal;
-// InitVal       ::= Exp;
+// VarDef        ::= IDENT 
+//                 | IDENT "=" InitVal
+//                 | IDENT VarSizeList
+//                 | IDENT VarSizeList "=" InitVal;
+// VarSizeList   ::= "[" ConstExp "]" | VarSizeList "[" ConstExp "]";
+// InitVal       ::= Exp | "{" [InitValList] "}";
+// InitValList   ::= InitVal | InitValList "," InitVal;
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
 // FuncFParam    ::= BType IDENT;
 // Block         ::= "{" BlockItemList "}";
-// BlockItemList ::= %empty | BlockItemList BlockItem
+// BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
 // MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 // Exp           ::= LOrExp;
-// LVal          ::= IDENT;
+// LVal          ::= IDENT | IDENT ExpList;
+// ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
 // Number        ::= INT_CONST;
 // UnaryExp      ::= PrimaryExp | UnaryOp UnaryExp | IDENT "(" [FuncRParamList] ")";
@@ -527,7 +674,16 @@ class Visitor_ast {
     bool if_func_def = false;
 
     // 全局变量相关
-    bool global_decl; // 全局的变量声明
+    bool global_decl = false; // 全局的变量声明
+
+    // 数组相关
+    // 用于多个节点协作得到一个全局数组的 GlobalIR
+    GlobalIR_2* global_array;
+    // 记录数组维度信息
+    std::unordered_map<std::string, std::vector<int>> array_size;
+    std::string array_name; // 传递数组名用于记录数组维度信息
+    std::stack<std::string> array_init_stk; // 用于存 getelemptr 的返回符号
+
   
     // 工具函数
     void set_lval(LVal_Mode mode) {
@@ -623,12 +779,21 @@ class Visitor_ast {
     void ir_init(BTypeAST& btype);
     void ir_init(ConstDefListAST& const_def_list);
     void ir_init(ConstDefAST_1& const_def);
+    void ir_init(ConstDefAST_2& const_def);
+    void ir_init(ConstSizeListAST& const_size_list);
     void ir_init(ConstInitValAST_1& const_init_val);
+    void ir_init(ConstInitValAST_2& const_init_val);
+    void ir_init(ConstInitValListAST& const_init_val_list);
     void ir_init(VarDeclAST& var_decl);
     void ir_init(VarDefListAST& var_def_list);
     void ir_init(VarDefAST_1& var_def);
     void ir_init(VarDefAST_2& var_def);
+    void ir_init(VarDefAST_3& var_def);
+    void ir_init(VarDefAST_4& var_def);
+    void ir_init(VarSizeListAST& var_size_list);
     void ir_init(InitValAST_1& init_val);
+    void ir_init(InitValAST_2& init_val);
+    void ir_init(InitValListAST& init_val_list);
 
     void ir_init(FuncDefAST& func_def);
     void ir_init(FuncFParamListAST& func_f_param_list);
@@ -651,6 +816,8 @@ class Visitor_ast {
     void ir_init(UnmatchedStmtAST_2& unmatched_stmt);
     void ir_init(ExpAST& exp);
     void ir_init(LValAST_1& lval);
+    void ir_init(LValAST_2& lval);
+    void ir_init(ExpListAST& exp_list);
     void ir_init(PrimaryExpAST_1& primary_exp);
     void ir_init(PrimaryExpAST_2& primary_exp);
     void ir_init(PrimaryExpAST_3& primary_exp);

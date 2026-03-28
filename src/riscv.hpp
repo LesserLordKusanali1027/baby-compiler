@@ -6,7 +6,8 @@
 # include <unordered_map>
 
 class ProgramIR;
-class GlobalIR;
+class GlobalIR_1;
+class GlobalIR_2;
 class FunctionIR;
 class FunctionDeclIR;
 class BasicBlockIR;
@@ -17,6 +18,80 @@ class ValueIR_4;
 class ValueIR_5;
 class ValueIR_6;
 class ValueIR_7;
+class ValueIR_8;
+
+// 数组名称 + 对应维度
+struct ArraySymbolInfo {
+    std::string array_name;
+    int symbol_dim;
+};
+// 记录数组信息
+class ArrayInfo {
+  private:
+    // 数组大小
+    std::unordered_map<std::string, std::vector<int>> array_size;
+    // 符号和数组名称的对应关系
+    std::unordered_map<std::string, ArraySymbolInfo*> symbol_array;
+    
+  public:
+    ArrayInfo() { }
+    ~ArrayInfo() {
+        array_size.clear();
+        symbol_array.clear();
+    }
+
+    // 每经过一个函数就要把临时符号清空一次，否则会重复
+    void CleanSymbol() {
+        for (auto it = symbol_array.begin(); it != symbol_array.end(); ) {
+            if (!it->first.empty() && it->first[0] == '%') {
+                delete it->second; // 释放 new 出来的内存
+                it = symbol_array.erase(it); // erase 返回下一个有效迭代器
+            } 
+            else  it++;
+        }
+    }
+
+    // 添加新数组的名字和大小信息
+    void Add_Array(std::vector<int>& new_array_size, std::string& new_array_name) {
+        for (int i = 0; i < new_array_size.size(); i++) {
+            array_size[new_array_name].push_back(new_array_size[i]);
+        }
+    }
+
+    // 加入数组符号，它自然对应着最高维度
+    void Add_Symbol(std::string& new_array_name) {
+        ArraySymbolInfo* symbol_info = new ArraySymbolInfo();
+        symbol_info -> symbol_dim = 1;
+        symbol_info -> array_name = new_array_name;
+        symbol_array[new_array_name] = symbol_info;
+    }
+    // 加入临时符号，根据其上级符号确定其对应的维度
+    void Add_Symbol(std::string& new_symbol_name, std::string& former_symbol_name) {
+        // 当超出了索引，就不放了，对应最低维的 getelemptr 指令
+        int tmp_symbol_dim = symbol_array[former_symbol_name] -> symbol_dim;
+        int tmp_array_dim = array_size[ symbol_array[former_symbol_name]->array_name].size();
+        if (tmp_symbol_dim >= tmp_array_dim)
+            return;
+
+        ArraySymbolInfo* symbol_info = new ArraySymbolInfo();
+        symbol_info -> symbol_dim = (symbol_array[former_symbol_name]->symbol_dim) + 1;
+        symbol_info -> array_name = symbol_array[former_symbol_name] -> array_name;
+        symbol_array[new_symbol_name] = symbol_info;
+    }
+
+    // 返回某个符号的单位偏移量
+    int Get_Size(std::string& symbol_name) {
+        int size = 4;
+
+        int start_dim = symbol_array[symbol_name]->symbol_dim;
+        int array_dim = array_size[symbol_array[symbol_name]->array_name].size();
+        for (int i = start_dim; i < array_dim; i++) {
+            size *= array_size[symbol_array[symbol_name]->array_name][i];
+        }
+
+        return size;
+    }
+};
 
 class Visitor_ir {
   private:
@@ -41,6 +116,11 @@ class Visitor_ir {
     // 记录所有的全局变量
     std::unordered_map<std::string, int> global_vars;
 
+    // 主要为了处理 getelemptr
+    ArrayInfo array_info;
+    // 记录所有全局数组
+    std::unordered_map<std::string, int> global_arrays;
+
   public:
     Visitor_ir(const char* output) {
         file.open(output);
@@ -61,7 +141,8 @@ class Visitor_ir {
 
     // RISC-V 生成函数
     void riscv_get(ProgramIR& program);
-    void riscv_get(GlobalIR& global);
+    void riscv_get(GlobalIR_1& global);
+    void riscv_get(GlobalIR_2& global);
     void riscv_get(FunctionIR& function);
     void riscv_get(FunctionDeclIR& function_decl) {return;} // 不用管
     void riscv_get(BasicBlockIR& basic_block);
@@ -72,7 +153,7 @@ class Visitor_ir {
     void riscv_get(ValueIR_5& value);
     void riscv_get(ValueIR_6& value);
     void riscv_get(ValueIR_7& value);
-
+    void riscv_get(ValueIR_8& value);
 };
 
 # endif

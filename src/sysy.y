@@ -39,7 +39,11 @@ using namespace std;
   CompUnitListAST* compunitlist_val;
   FuncFParamListAST* funcfparamlist_val;
   FuncRParamListAST* funcrparamlist_val;
-  ConstExpListAST* constexplist_val;
+
+  ConstSizeListAST* constsizelist_val;
+  ConstInitValListAST* constinitvallist_val;
+  VarSizeListAST* varsizelist_val;
+  InitValListAST* initvallist_val;
   ExpListAST* explist_val;
 }
 
@@ -61,7 +65,10 @@ using namespace std;
 %type <funcfparamlist_val> FuncFParamList
 %type <funcrparamlist_val> FuncRParamList
 %type <ast_val> CompUnitItem
-%type <constexplist_val> ConstExpList
+%type <constsizelist_val> ConstSizeList
+%type <constinitvallist_val> ConstInitValList
+%type <varsizelist_val> VarSizeList
+%type <initvallist_val> InitValList
 %type <explist_val> ExpList
 
 %%
@@ -160,7 +167,7 @@ ConstDefList
   }
   ;
 
-// ConstDef ::= IDENT "=" ConstInitVal | IDENT "[" ConstExp "]" "=" ConstInitVal;
+// ConstDef ::= IDENT "=" ConstInitVal | IDENT ConstSizeList "=" ConstInitVal;
 ConstDef
   : IDENT '=' ConstInitVal {
     auto ast = new ConstDefAST_1();
@@ -168,16 +175,30 @@ ConstDef
     ast -> constinitval = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
-  | IDENT "[" ConstExp "]" "=" ConstInitVal {
+  | IDENT ConstSizeList '=' ConstInitVal {
     auto ast = new ConstDefAST_2();
     ast -> ident = *unique_ptr<string>($1);
-    ast -> constexp = unique_ptr<BaseAST>($3);
-    ast -> constinitval = unique_ptr<BaseAST>($6);
+    ast -> constsizelist = unique_ptr<BaseAST>($2);
+    ast -> constinitval = unique_ptr<BaseAST>($4);
     $$ = ast;
   }
   ;
 
+// ConstSizeList ::= "[" ConstExp "]" | ConstSizeList "[" ConstExp "]";
+ConstSizeList
+  : '[' ConstExp ']' {
+    auto ast = new ConstSizeListAST();
+    ast -> push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  | ConstSizeList '[' ConstExp ']' {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
+  }
+  ;
+
 // ConstInitVal ::= ConstExp | "{" [ConstExpList] "}";
+// ConstInitVal ::= ConstExp | "{" [ConstInitValList] "}";
 ConstInitVal
   : ConstExp {
     auto ast = new ConstInitValAST_1();
@@ -186,24 +207,24 @@ ConstInitVal
   }
   | '{' '}' {
     auto ast = new ConstInitValAST_2();
-    ast -> constexplist = unique_ptr<BaseAST>(nullptr);
+    ast -> constinitvallist = unique_ptr<BaseAST>(nullptr);
     $$ = ast;
   }
-  | '{' ConstExpList '}' {
+  | '{' ConstInitValList '}' {
     auto ast = new ConstInitValAST_2();
-    ast -> constexplist = unique_ptr<BaseAST>($2);
+    ast -> constinitvallist = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
   ;
 
-// ConstExpList ::= ConstExp | ConstExpList "," ConstExp
-ConstExpList
-  : ConstExp {
-    auto ast = new ConstExpListAST();
+// ConstInitValList ::= ConstInitVal | ConstInitValList "," ConstInitVal;
+ConstInitValList
+  : ConstInitVal {
+    auto ast = new ConstInitValListAST();
     ast -> push_back(unique_ptr<BaseAST>($1));
     $$ = ast;
   }
-  | ConstExpList ',' ConstExp {
+  | ConstInitValList ',' ConstInitVal {
     $1 -> push_back(unique_ptr<BaseAST>($3));
     $$ = $1;
   }
@@ -232,7 +253,7 @@ VarDefList
   }
   ;
 
-// VarDef ::= IDENT | IDENT "=" InitVal | IDENT "[" ConstExp "]" | IDENT "[" ConstExp "]" "=" InitVal;
+// VarDef ::= IDENT | IDENT "=" InitVal | IDENT VarSizeList | IDENT VarSizeList "=" InitVal;
 VarDef
   : IDENT {
     auto ast = new VarDefAST_1();
@@ -245,22 +266,36 @@ VarDef
     ast -> initval = unique_ptr<BaseAST>($3);
     $$ = ast;
   }
-  | IDENT '[' ConstExp ']' {
+  | IDENT VarSizeList {
     auto ast = new VarDefAST_3();
     ast -> ident = *unique_ptr<string>($1);
-    ast -> constexp = unique_ptr<BaseAST>($3);
+    ast -> varsizelist = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
-  | IDENT '[' ConstExp ']' '=' InitVal {
+  | IDENT VarSizeList '=' InitVal {
     auto ast = new VarDefAST_4();
     ast -> ident = *unique_ptr<string>($1);
-    ast -> constexp = unique_ptr<BaseAST>($3);
-    ast -> initval = unique_ptr<BaseAST>($6);
+    ast -> varsizelist = unique_ptr<BaseAST>($2);
+    ast -> initval = unique_ptr<BaseAST>($4);
     $$ = ast;
   }
   ;
 
+// VarSizeList ::= "[" ConstExp "]" | VarSizeList "[" ConstExp "]";
+VarSizeList
+  : '[' ConstExp ']' {
+    auto ast = new VarSizeListAST();
+    ast -> push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  | VarSizeList '[' ConstExp ']' {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
+  }
+  ;
+
 // InitVal ::= Exp | "{" [ExpList] "}";
+// InitVal ::= Exp | "{" [InitValList] "}";
 InitVal
   : Exp {
     auto ast = new InitValAST_1();
@@ -269,24 +304,24 @@ InitVal
   }
   | '{' '}' {
     auto ast = new InitValAST_2();
-    ast -> explist = unique_ptr<BaseAST>(nullptr);
+    ast -> initvallist = unique_ptr<BaseAST>(nullptr);
     $$ = ast;
   }
-  | '{' ExpList '}' {
+  | '{' InitValList '}' {
     auto ast = new InitValAST_2();
-    ast -> explist = unique_ptr<BaseAST>($2);
+    ast -> initvallist = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
   ;
 
-// ExpList ::= Exp | ExpList "," Exp;
-ExpList
-  : Exp {
-    auto ast = new ExpListAST();
+// InitValList ::= InitVal | InitValList "," InitVal;
+InitValList
+  : InitVal {
+    auto ast = new InitValListAST();
     ast -> push_back(unique_ptr<BaseAST>($1));
     $$ = ast;
   }
-  | ExpList ',' Exp {
+  | InitValList ',' InitVal {
     $1 -> push_back(unique_ptr<BaseAST>($3));
     $$ = $1;
   }
@@ -483,20 +518,32 @@ Exp
   }
   ;
 
-// LVal ::= IDENT | IDENT "[" Exp "]";
+// LVal ::= IDENT | IDENT ExpList;
 LVal
   : IDENT {
     auto ast = new LValAST_1();
     ast -> ident = *unique_ptr<string>($1);
     $$ = ast;
   }
-  | IDENT '[' Exp ']' {
+  | IDENT ExpList {
     auto ast = new LValAST_2();
     ast -> ident = *unique_ptr<string>($1);
-    ast -> exp = unique_ptr<BaseAST>($3);
+    ast -> explist = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
   ;
+
+// ExpList ::= "[" Exp "]" | ExpList "[" Exp "]";
+ExpList
+  : '[' Exp ']' {
+    auto ast = new ExpListAST();
+    ast -> push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  | ExpList '[' Exp ']' {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
+  }
 
 // PrimaryExp  ::= "(" Exp ")" | LVal | Number;
 PrimaryExp

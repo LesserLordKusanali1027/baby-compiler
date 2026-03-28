@@ -1,6 +1,7 @@
-#include "koopa.hpp"
-#include "parser.hpp"
-#include <vector>
+# include "koopa.hpp"
+# include "parser.hpp"
+# include <vector>
+# include <iostream>
 
 // CompUnit      ::= CompUnitList;
 void Visitor_ast::ir_init(CompUnitAST& comp_unit) {
@@ -36,8 +37,8 @@ void Visitor_ast::ir_init(CompUnitItemAST_2& comp_unit_item) {
 }
 
 // Decl          ::= ConstDecl | VarDecl;
-void Visitor_ast::ir_init(DeclAST_1& decl) {
-    // 没写就是什么都不用做
+void Visitor_ast::ir_init(DeclAST_1& decl) { // 常量也往下传
+    decl.constdecl.get() -> accept(*this);
 }
 void Visitor_ast::ir_init(DeclAST_2& decl) { // 变量还是要往下传的
     decl.vardecl.get() -> accept(*this);
@@ -45,7 +46,7 @@ void Visitor_ast::ir_init(DeclAST_2& decl) { // 变量还是要往下传的
 
 // ConstDecl     ::= "const" BType ConstDefList ";";
 void Visitor_ast::ir_init(ConstDeclAST& const_decl) {
-
+    const_decl.constdeflist.get() -> accept(*this);
 }
 
 // BType         ::= "int" | "void";
@@ -58,17 +59,149 @@ void Visitor_ast::ir_init(BTypeAST& btype) {
 
 // ConstDefList  ::= ConstDef | ConstDefList "," ConstDef;
 void Visitor_ast::ir_init(ConstDefListAST& const_def_list) {
-
+    // 如果是数组就往下传
+    for (int i = 0; i < const_def_list.constdefs.size(); i++) {
+        if (dynamic_cast<ConstDefAST_2*>(const_def_list.constdefs[i].get())) {
+            const_def_list.constdefs[i].get() -> accept(*this);
+        }
+    }
+    
 }
 
-// ConstDef      ::= IDENT "=" ConstInitVal;
+// ConstDef      ::= IDENT "=" ConstInitVal | IDENT ConstSizeList "=" ConstInitVal;
 void Visitor_ast::ir_init(ConstDefAST_1& const_def) {
 
 }
+void Visitor_ast::ir_init(ConstDefAST_2& const_def) {
+    if (this -> global_decl) {
+        this -> global_array = new GlobalIR_2();
+        global_array -> name = "@" + const_def.ident;
+        global_array -> type = "int";
 
-// ConstInitVal  ::= ConstExp;
+        // 记下数组名
+        this -> array_name = const_def.ident;
+
+        // 获得数组大小信息
+        const_def.constsizelist.get() -> accept(*this);
+        // 获取初始值
+        const_def.constinitval.get() -> accept(*this);
+
+        // 放入 GlobalIR
+        (this -> program -> globals).push_back(this -> global_array);
+    }
+    else {
+        // 记下数组名，要用来记录维度信息，以及赋值时读取维度信息
+        this -> array_name = const_def.ident;
+
+        // 获取size
+        const_def.constsizelist.get() -> accept(*this);
+
+        // alloc 指令
+        ValueIR_8* value1 = new ValueIR_8();
+        value1 -> opcode = "alloc";
+        value1 -> target = "@" + const_def.ident;
+        value1 -> operand1 = "i32";
+        for (int i = 0; i < array_size[const_def.ident].size(); i++) {
+            (value1 -> operand2s).push_back(array_size[const_def.ident][i]);
+        }
+        (this -> basic_block -> values).push_back(value1);
+
+        // 准备数组初始化符号栈
+        (this -> array_init_stk).push(value1 -> target);
+        // 设置初始值
+        const_def.constinitval.get() -> accept(*this);
+        // 结束符号栈
+        (this -> array_init_stk).pop();
+    }
+}
+
+// ConstSizeList ::= "[" ConstExp "]" | ConstSizeList "[" ConstExp "]";
+void Visitor_ast::ir_init(ConstSizeListAST& const_size_list) {
+    if (this -> global_decl) {
+        for (int i = 0; i < const_size_list.constexps.size(); i++) {
+            // 计算 ConstExp，已经过常量折叠，不会有 LVal，所以不用 set_lval()
+            const_size_list.constexps[i].get() -> accept(*this);
+            // 将数组大小记录到 GlobalIR 和 array_size 中
+            (this -> global_array -> size).push_back(std::stoi((this->exp_stk).top()));
+            array_size[array_name].push_back(std::stoi((this->exp_stk).top()));
+            (this -> exp_stk).pop();
+        }
+    }
+    else {
+        for (int i = 0; i < const_size_list.constexps.size(); i++) {
+            const_size_list.constexps[i].get() -> accept(*this);
+            // 将数组大小记入 array_size
+            array_size[array_name].push_back(std::stoi((this->exp_stk).top()));
+            (this -> exp_stk).pop();
+        }
+    }
+}
+
+// ConstInitVal  ::= ConstExp | "{" [ConstInitValList] "}";
 void Visitor_ast::ir_init(ConstInitValAST_1& const_init_val) {
+    const_init_val.constexp.get() -> accept(*this);
+}
+void Visitor_ast::ir_init(ConstInitValAST_2& const_init_val) {
+    if (this -> global_decl) {
+        // 经过语义分析，肯定不会出现为空的情况
+        const_init_val.constinitvallist.get() -> accept(*this);
+    }
+    else {
+        // 也不会出现为空的情况，但是要手动赋值了
+        const_init_val.constinitvallist.get() -> accept(*this);
+    }
+}
 
+// ConstInitValList ::= ConstInitVal | ConstInitValList "," ConstInitVal;
+void Visitor_ast::ir_init(ConstInitValListAST& const_init_val_list) {
+    if (this -> global_decl) {
+        for (int i = 0; i < const_init_val_list.constinitvals.size(); i++) {
+            if (dynamic_cast<ConstInitValAST_1*>(const_init_val_list.constinitvals[i].get())) {
+                // 可以直接获得值
+                const_init_val_list.constinitvals[i].get() -> accept(*this);
+                // 放入 global
+                (this -> global_array -> init_val).push_back((this->exp_stk).top());
+                (this -> exp_stk).pop();
+            }
+            else {
+                const_init_val_list.constinitvals[i].get() -> accept(*this);
+            }
+        }
+    }
+    else {
+        for (int i = 0; i < const_init_val_list.constinitvals.size(); i++) {
+            // 先来个 getelemptr
+            ValueIR_2* value1 = new ValueIR_2();
+            value1 -> opcode = "getelemptr";
+            value1 -> operand1 = (this -> array_init_stk).top();
+            value1 -> operand2 = std::to_string(i);
+            value1 -> target = "%" + std::to_string(this->tmp_symbol++);
+            (this -> basic_block -> values).push_back(value1);
+            // 将符号放入初始化符号栈
+            (this -> array_init_stk).push(value1 -> target);
+
+            // 然后继续向下
+            if (dynamic_cast<ConstInitValAST_1*>(const_init_val_list.constinitvals[i].get())) {
+                // 可以获得值了
+                set_lval(LOAD);
+                const_init_val_list.constinitvals[i].get() -> accept(*this);
+                recover_lval();
+
+                // store 指令
+                ValueIR_4* value2 = new ValueIR_4();
+                value2 -> opcode = "store";
+                value2 -> operand1 = (this->exp_stk).top();
+                (this -> exp_stk).pop();
+                value2 -> operand2 = (this -> array_init_stk).top();
+                (this -> basic_block -> values).push_back(value2);
+            }
+            else { // 否则继续向下
+                const_init_val_list.constinitvals[i].get() -> accept(*this);
+            }
+            // pop 用完的符号
+            (this -> array_init_stk).pop();
+        }
+    }
 }
 
 // VarDecl       ::= BType VarDefList ";";
@@ -83,10 +216,13 @@ void Visitor_ast::ir_init(VarDefListAST& var_def_list) {
     }
 }
 
-// VarDef        ::= IDENT | IDENT "=" InitVal;
+// VarDef        ::= IDENT
+//                 | IDENT "=" InitVal
+//                 | IDENT VarSizeList
+//                 | IDENT VarSizeList "=" InitVal;
 void Visitor_ast::ir_init(VarDefAST_1& var_def) {
     if (this -> global_decl) {
-        GlobalIR* global_var = new GlobalIR();
+        GlobalIR_1* global_var = new GlobalIR_1();
         global_var -> name = "@" + var_def.ident;
         global_var -> type = "int"; // 目前都是 int，Lab9 中会变
         global_var -> init_val = "zeroinit";
@@ -103,11 +239,11 @@ void Visitor_ast::ir_init(VarDefAST_1& var_def) {
 }
 void Visitor_ast::ir_init(VarDefAST_2& var_def) {
     if (this -> global_decl) {
-        GlobalIR* global_var = new GlobalIR();
+        GlobalIR_1* global_var = new GlobalIR_1();
         global_var -> name = "@" + var_def.ident;
         global_var -> type = "int";
 
-        // 然后获取左边的值
+        // 然后获取右边的值
         set_lval(LOAD);
         var_def.initval.get() -> accept(*this);
         recover_lval();
@@ -137,9 +273,183 @@ void Visitor_ast::ir_init(VarDefAST_2& var_def) {
         (this -> basic_block -> values).push_back(value2);
     }
 }
+void Visitor_ast::ir_init(VarDefAST_3& var_def) {
+    if (this -> global_decl) {
+        this -> global_array = new GlobalIR_2();
+        global_array -> name = "@" + var_def.ident;
+        global_array -> type = "int";
 
+        // 记下数组名
+        this -> array_name = var_def.ident;
+
+        // 获得数组大小信息
+        var_def.varsizelist.get() -> accept(*this);
+
+        // 手动初始化为 0
+        int sum = 1;
+        for (int i = 0; i < (global_array->size).size(); i++) {
+            sum *= (global_array->size)[i];
+        }
+        std::string init_val = "0";
+        for (int i = 0; i < sum; i++) {
+            (global_array -> init_val).push_back(init_val);
+        }
+
+        // 放入
+        (this -> program -> globals).push_back(this -> global_array);
+    }
+    else {
+        // 记下数组名
+        this -> array_name = var_def.ident;
+
+        // 获得数组大小信息
+        var_def.varsizelist.get() -> accept(*this);
+
+        // alloc 指令
+        ValueIR_8* value1 = new ValueIR_8();
+        value1 -> opcode = "alloc";
+        value1 -> operand1 = "i32";
+        value1 -> target = "@" + var_def.ident;
+        for (int i = 0; i < array_size[var_def.ident].size(); i++) {
+            (value1 -> operand2s).push_back(array_size[var_def.ident][i]);
+        }
+        (this -> basic_block -> values).push_back(value1);
+
+        // 这里不初始化为 0 了，不管了
+    }
+}
+void Visitor_ast::ir_init(VarDefAST_4& var_def) {
+    if (this -> global_decl) {
+        this -> global_array = new GlobalIR_2();
+        global_array -> name = "@" + var_def.ident;
+        global_array -> type = "int";
+
+        // 记下数组名
+        this -> array_name = var_def.ident;
+
+        // 获得数组大小信息
+        var_def.varsizelist.get() -> accept(*this);
+
+        // 获取初始值
+        var_def.initval.get() -> accept(*this);
+
+        // 放入 GlobalIR
+        (this -> program -> globals).push_back(this -> global_array);
+    }
+    else {
+        // 记下数组名
+        this -> array_name = var_def.ident;
+
+        // 获得数组大小信息
+        var_def.varsizelist.get() -> accept(*this);
+
+        // alloc 指令
+        ValueIR_8* value1 = new ValueIR_8();
+        value1 -> opcode = "alloc";
+        value1 -> operand1 = "i32";
+        value1 -> target = "@" + var_def.ident;
+        for (int i = 0; i < array_size[var_def.ident].size(); i++) {
+            (value1 -> operand2s).push_back(array_size[var_def.ident][i]);
+        }
+        (this -> basic_block -> values).push_back(value1);
+
+        // 准备数组初始化符号栈
+        (this -> array_init_stk).push(value1 -> target);
+        // 设置初始值
+        var_def.initval.get() -> accept(*this);
+        // 结束符号栈
+        (this -> array_init_stk).pop();
+    }
+}
+
+// VarSizeList   ::= "[" ConstExp "]" | VarSizeList "[" ConstExp "]";
+void Visitor_ast::ir_init(VarSizeListAST& var_size_list) {
+    if (this -> global_decl) {
+        for (int i = 0; i < var_size_list.constexps.size(); i++) {
+            // 获取值
+            var_size_list.constexps[i].get() -> accept(*this);
+            // 放起来
+            (this -> global_array -> size).push_back(std::stoi((this->exp_stk).top()));
+            array_size[array_name].push_back(std::stoi((this->exp_stk).top()));
+            (this -> exp_stk).pop();
+        }
+    }
+    else {
+        for (int i = 0; i < var_size_list.constexps.size(); i++) {
+            // 获取值
+            var_size_list.constexps[i].get() -> accept(*this);
+            // 放起来
+            array_size[array_name].push_back(std::stoi((this->exp_stk).top()));
+            (this -> exp_stk).pop();
+        }
+    }
+}
+
+// InitVal       ::= Exp | "{" [InitValList] "}";
 void Visitor_ast::ir_init(InitValAST_1& init_val) {
     init_val.exp.get() -> accept(*this);
+}
+void Visitor_ast::ir_init(InitValAST_2& init_val) {
+    if (this -> global_decl) {
+        // 不存在为空的情况
+        init_val.initvallist.get() -> accept(*this);
+    }
+    else {
+        // 也不存在为空的情况
+        init_val.initvallist.get() -> accept(*this);
+    }
+}
+
+// InitValList   ::= InitVal | InitValList "," InitVal;
+void Visitor_ast::ir_init(InitValListAST& init_val_list) {
+    if (this -> global_decl) {
+        for (int i = 0; i < init_val_list.initvals.size(); i++) {
+            if (dynamic_cast<InitValAST_1*>(init_val_list.initvals[i].get())) {
+                // 可以获取值了
+                init_val_list.initvals[i].get() -> accept(*this);
+                // 放入 init_val
+                (this -> global_array -> init_val).push_back((this->exp_stk).top());
+                (this -> exp_stk).pop();
+            }
+            else {
+                init_val_list.initvals[i].get() -> accept(*this);
+            }
+        }
+    }
+    else {
+        for (int i = 0; i < init_val_list.initvals.size(); i++) {
+            // 先来个 getelemptr
+            ValueIR_2* value1 = new ValueIR_2();
+            value1 -> opcode = "getelemptr";
+            value1 -> operand1 = (this -> array_init_stk).top();
+            value1 -> operand2 = std::to_string(i);
+            value1 -> target = "%" + std::to_string(this->tmp_symbol++);
+            (this -> basic_block -> values).push_back(value1);
+            // 将符号放入初始化符号栈
+            (this -> array_init_stk).push(value1 -> target);
+
+            // 然后继续向下
+            if (dynamic_cast<InitValAST_1*>(init_val_list.initvals[i].get())) {
+                // 可以获得值了
+                set_lval(LOAD);
+                init_val_list.initvals[i].get() -> accept(*this);
+                recover_lval();
+
+                // store 指令
+                ValueIR_4* value2 = new ValueIR_4();
+                value2 -> opcode = "store";
+                value2 -> operand1 = (this->exp_stk).top();
+                (this -> exp_stk).pop();
+                value2 -> operand2 = (this -> array_init_stk).top();
+                (this -> basic_block -> values).push_back(value2);
+            }
+            else { // 否则继续向下
+                init_val_list.initvals[i].get() -> accept(*this);
+            }
+            // pop 用完的符号
+            (this -> array_init_stk).pop();
+        }
+    }
 }
 
 void Visitor_ast::ir_init(FuncDefAST& func_def) {
@@ -550,14 +860,14 @@ void Visitor_ast::ir_init(ExpAST& exp) {
     return;
 }
 
+// LVal          ::= IDENT | IDENT ExpList;
 void Visitor_ast::ir_init(LValAST_1& lval) {
     // 只要进来了，就是变量，因为常量的 AST 路径是切断的
     if (this->lval_mode == LOAD) {
         ValueIR_3* value = new ValueIR_3();
         value -> opcode = "load";
         value -> operand = "@" + lval.ident;
-        value -> target = "%" + std::to_string(this->tmp_symbol);
-        this->tmp_symbol++;
+        value -> target = "%" + std::to_string(this->tmp_symbol++);
         (this->exp_stk).push(value -> target);
         (this -> basic_block -> values).push_back(value);
     }
@@ -569,6 +879,63 @@ void Visitor_ast::ir_init(LValAST_1& lval) {
         (this->exp_stk).pop();
         (this -> basic_block -> values).push_back(value);
     }
+}
+void Visitor_ast::ir_init(LValAST_2& lval) {
+    // 记录数组名
+    this -> array_name = lval.ident;
+    
+    if (this -> lval_mode == LOAD) {
+        // 先计算索引，这里直接返回目标指针
+        lval.explist.get() -> accept(*this);
+
+        // load
+        ValueIR_3* value = new ValueIR_3();
+        value -> opcode = "load";
+        value -> operand = (this->exp_stk).top();
+        (this -> exp_stk).pop();
+        value -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this -> basic_block -> values).push_back(value);
+        // 传递结果
+        (this -> exp_stk).push(value -> target);
+    }
+    else if (this -> lval_mode == STORE) {
+        // store 前半部分
+        ValueIR_4* value = new ValueIR_4();
+        value -> opcode = "store";
+        value -> operand1 = (this->exp_stk).top();
+        (this -> exp_stk).pop();
+
+        // 然后再算索引获得指针
+        lval.explist.get() -> accept(*this);
+
+        // store 后半部分
+        value -> operand2 = (this->exp_stk).top();
+        (this -> exp_stk).pop();
+        (this -> basic_block -> values).push_back(value);
+    }
+}
+
+// ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
+void Visitor_ast::ir_init(ExpListAST& exp_list) {
+    std::string tmp_pointer = "@" + this->array_name;
+    for (int i = 0; i < exp_list.exps.size(); i++) {
+        set_lval(LOAD);
+        exp_list.exps[i].get() -> accept(*this);
+        recover_lval();
+
+        // getelemptr
+        ValueIR_2* value = new ValueIR_2();
+        value -> opcode = "getelemptr";
+        value -> operand1 = tmp_pointer;
+        value -> operand2 = (this->exp_stk).top();
+        (this -> exp_stk).pop();
+        value -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this -> basic_block -> values).push_back(value);
+
+        tmp_pointer = value -> target;
+    }
+    // 返回指向目标元素的指针
+    (this -> exp_stk).push(tmp_pointer);
 }
 
 void Visitor_ast::ir_init(PrimaryExpAST_1& primary_exp) {
@@ -1022,5 +1389,5 @@ void Visitor_ast::ir_init(LOrExpAST_2& l_or_exp) {
 }
 
 void Visitor_ast::ir_init(ConstExpAST& const_exp) {
-
+    const_exp.exp.get() -> accept(*this);
 }
