@@ -131,6 +131,10 @@ class Visitor_ir {
         file.close();
     }
 
+    // 处理特定指令的函数
+    void riscv_lw(std::string target_register, int offset);
+    void riscv_sw(std::string target_register, int offset, std::string tool_register);
+
     // 为重复代码设置的工具函数
     int ParamReg(std::string param); // 获取、分配参数对应的寄存器
     int TargetReg(int param1, int param2); // target 应给存到哪个寄存器
