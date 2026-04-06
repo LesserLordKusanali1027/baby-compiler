@@ -1,6 +1,5 @@
-int arr[65536];
-
-int main() {
-  int arr[4096] = {1};
-  return arr[0];
+int bug(int a){
+    if (a == 1) return 1;
+    else return 1;
+    return 2;
 }

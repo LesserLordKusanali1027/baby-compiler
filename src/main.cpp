@@ -67,6 +67,10 @@ int main(int argc, const char *argv[]) {
         Visitor_ir visitor_ir(output);
         visitor_ast.program -> accept(visitor_ir);
     }
+    else if (strcmp(mode, "-perf") == 0) { // 性能测试，输出 RISC-V 代码
+        Visitor_ir visitor_ir(output);
+        visitor_ast.program -> accept(visitor_ir);
+    }
 
     return 0;
 }

@@ -19,6 +19,7 @@ class ValueIR_5;
 class ValueIR_6;
 class ValueIR_7;
 class ValueIR_8;
+class ValueIR_9;
 
 // 数组名称 + 对应维度
 struct ArraySymbolInfo {
@@ -40,6 +41,11 @@ class ArrayInfo {
         symbol_array.clear();
     }
 
+    // 判断某个数组是否存在
+    bool If_Exist(std::string& array_name) {
+        return array_size.count(array_name);
+    }
+
     // 每经过一个函数就要把临时符号清空一次，否则会重复
     void CleanSymbol() {
         for (auto it = symbol_array.begin(); it != symbol_array.end(); ) {
@@ -51,36 +57,62 @@ class ArrayInfo {
         }
     }
 
-    // 添加新数组的名字和大小信息
+    // 添加新数组的名字和大小信息，普通数组
     void Add_Array(std::vector<int>& new_array_size, std::string& new_array_name) {
         for (int i = 0; i < new_array_size.size(); i++) {
             array_size[new_array_name].push_back(new_array_size[i]);
+        }
+
+        if (new_array_size.size() == 0) {
+            array_size[new_array_name].push_back(1);
         }
     }
 
     // 加入数组符号，它自然对应着最高维度
     void Add_Symbol(std::string& new_array_name) {
         ArraySymbolInfo* symbol_info = new ArraySymbolInfo();
-        symbol_info -> symbol_dim = 1;
+        symbol_info -> symbol_dim = 0;
         symbol_info -> array_name = new_array_name;
         symbol_array[new_array_name] = symbol_info;
     }
     // 加入临时符号，根据其上级符号确定其对应的维度
-    void Add_Symbol(std::string& new_symbol_name, std::string& former_symbol_name) {
-        // 当超出了索引，就不放了，对应最低维的 getelemptr 指令
-        int tmp_symbol_dim = symbol_array[former_symbol_name] -> symbol_dim;
-        int tmp_array_dim = array_size[ symbol_array[former_symbol_name]->array_name].size();
-        if (tmp_symbol_dim >= tmp_array_dim)
-            return;
+    // if_lower 表明是否降维，如果 getelemptr 就降维，getptr 就不降
+    void Add_Symbol(std::string& new_symbol_name, std::string& former_symbol_name, bool if_lower) {
+        if (if_lower) {
+            // 当超出了索引，就不放了，对应最低维的 getelemptr 指令
+            int tmp_symbol_dim = symbol_array[former_symbol_name] -> symbol_dim;
+            int tmp_array_dim = array_size[symbol_array[former_symbol_name]->array_name].size();
+            if (tmp_symbol_dim >= tmp_array_dim)
+                return;
 
-        ArraySymbolInfo* symbol_info = new ArraySymbolInfo();
-        symbol_info -> symbol_dim = (symbol_array[former_symbol_name]->symbol_dim) + 1;
-        symbol_info -> array_name = symbol_array[former_symbol_name] -> array_name;
-        symbol_array[new_symbol_name] = symbol_info;
+            ArraySymbolInfo* symbol_info = new ArraySymbolInfo();
+            symbol_info -> symbol_dim = (symbol_array[former_symbol_name]->symbol_dim) + 1;
+            symbol_info -> array_name = symbol_array[former_symbol_name] -> array_name;
+            symbol_array[new_symbol_name] = symbol_info;
+        }
+        else { // getptr 得到的符号是平维的
+            ArraySymbolInfo* symbol_info = new ArraySymbolInfo();
+            symbol_info -> symbol_dim = (symbol_array[former_symbol_name]->symbol_dim);
+            symbol_info -> array_name = symbol_array[former_symbol_name] -> array_name;
+            symbol_array[new_symbol_name] = symbol_info;
+        }
     }
 
     // 返回某个符号的单位偏移量
-    int Get_Size(std::string& symbol_name) {
+    // getelemptr 返回每个子符号应有的偏移量
+    int Get_Size_Low(std::string& symbol_name) {
+        int size = 4;
+
+        int start_dim = symbol_array[symbol_name]->symbol_dim + 1;
+        int array_dim = array_size[symbol_array[symbol_name]->array_name].size();
+        for (int i = start_dim; i < array_dim; i++) {
+            size *= array_size[symbol_array[symbol_name]->array_name][i];
+        }
+
+        return size;
+    }
+    // getptr 返回当前符号的偏移量
+    int Get_Size_Equal(std::string& symbol_name) {
         int size = 4;
 
         int start_dim = symbol_array[symbol_name]->symbol_dim;
@@ -158,6 +190,7 @@ class Visitor_ir {
     void riscv_get(ValueIR_6& value);
     void riscv_get(ValueIR_7& value);
     void riscv_get(ValueIR_8& value);
+    void riscv_get(ValueIR_9& value);
 };
 
 # endif

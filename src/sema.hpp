@@ -38,7 +38,9 @@ class InitValListAST;
 
 class FuncDefAST;
 class FuncFParamListAST;
-class FuncFParamAST;
+class FuncFParamAST_1;
+class FuncFParamAST_2;
+class ConstExpListAST;
 class BlockAST;
 class BlockItemListAST;
 class BlockItemAST_1;
@@ -287,7 +289,11 @@ class SymbolTableStack {
     void add_var (std::string& name) {
         SymbolTable* table = table_stack.back();
         symbol_count[name]++;
-        std::string value = name + "_" + std::to_string(symbol_count[name]);
+        std::string value; // 打个补丁
+        if (name == "end")
+            value = name + "_var_" + std::to_string(symbol_count[name]);
+        else
+            value = name + "_" + std::to_string(symbol_count[name]);
         table -> add_var(name, value);
     }
     void add_const_array (std::string& name) {
@@ -384,19 +390,30 @@ class SymbolTableStack {
 class FunctionInfo {
   private:
     std::string func_type;
-    int params_count;
+    std::vector<int> params_dim; // 参数的维度，如 int a 是 0 维，int a[] 是一维
+    std::unordered_map<int, std::vector<int>> params_size; // 对于数组参数加入大小信息，如 int a[][3][4] 就加入 3、4
 
   public:
-    FunctionInfo() {
-        params_count = 0;
+    ~FunctionInfo() {
+        params_size.clear();
     }
+
     // 存入返回值类型
     void add_type(std::string& type) {
         func_type = type;
     }
-    // 加入参数
-    void add_param() {
-        params_count++;
+    // 加入参数，传入维度信息
+    void add_param(int dim) {
+        params_dim.push_back(dim);
+    }
+    // 加入数组参数的大小信息，第 index 个参数，新增大小为 size
+    bool add_size(int index, int size) {
+        if (index < params_dim.size() && params_size[index].size() < params_dim[index]-1) {
+            params_size[index].push_back(size);
+            return true;
+        }
+        else
+            return false;
     }
     
     // 判断返回值类型
@@ -407,9 +424,26 @@ class FunctionInfo {
         return func_type == "void";
     }
 
-    // 判断参数个数对不对，只需要比较个数，不需要比较具体类型，因为都是 int
-    int param_num() {
-        return params_count;
+    // 判断参数个数对不对，只需要比较个数，不比较具体类型
+    int get_param_num() {
+        return params_dim.size();
+    }
+    // 判断某个参数的维度是否匹配，传入 index，返回参数的维度
+    int get_param_dim(int index) {
+        if (index < params_dim.size())
+            return params_dim[index];
+        else
+            return -1;
+    }
+    // 判断某个数组参数的某维度的大小是否匹配，传入 index，dim_index，返回该维度的大小
+    int get_param_size(int index, int dim_index) {
+        // 防止内存泄露
+        if (index >= params_dim.size())
+            return -1;
+        if (dim_index >= params_dim[index]-1)
+            return -1;
+        
+        return params_size[index][dim_index];
     }
 };
 
@@ -443,16 +477,45 @@ class FunctionTable {
         table[name] -> add_type(func_type);
     }
     // 参数++
-    void add_param(std::string& name) {
-        table[name] -> add_param();
+    void add_param(std::string& name, int dim) {
+        table[name] -> add_param(dim);
+    }
+    // 为数组参数添加维度
+    void add_size(std::string& name, int index, int size) {
+        bool result = table[name]->add_size(index, size);
+        if (!result) {
+            std::cout << "Function table has a mistake: function '" << name << "' doesn't have parameter with index '" << index
+                      << "' or doesn't need more size, which is the developer's fault.\n";
+            exit(-1); 
+        }
     }
 
     // 报错检测相关
-    // 返回参数个数，用于检测是否匹配
-    int param_num(std::string& name) {
-        return table[name] -> param_num();
+    // 返回参数个数，最基本的检测
+    int get_param_num(std::string& name) {
+        return table[name] -> get_param_num();
     }
-    // 判断是否要有返回值，目前没用上
+    // 返回某个参数的维度信息，数字就是 0 维，数组就是对应维度
+    int get_param_dim(std::string& name, int index) {
+        int result = table[name]->get_param_dim(index);
+        if (result == -1) {
+            std::cout << "Function table has a mistake: function '" << name << "' doesn't have parameter with index '" << index
+                      << "', which is the developer's fault.\n";
+            exit(-1);
+        }
+        return result;
+    }
+    // 返回某个数组参数的某维的大小，这里维度从 [][3][4] 第二个 [3] 开始编号 0,1
+    int get_param_size(std::string& name, int index, int dim_index) {
+        int result = table[name]->get_param_size(index, dim_index);
+        if (result == -1) {
+            std::cout << "Function table has a mistake: function '" << name << "' doesn't have parameter with index '" << index
+                      << "' or the parameter doesn't have the dim index '" << dim_index << "', which is the developer's fault.\n";
+            exit(-1);
+        }
+        return result;
+    }
+    // 判断是否要有返回值
     bool if_ret_int(std::string& name) {
         return table[name] -> if_int();
     }
@@ -487,14 +550,43 @@ class FunctionDeclTable {
         table[name] -> add_type(func_type);
     }
     // 参数++
-    void add_param(std::string& name) {
-        table[name] -> add_param();
+    void add_param(std::string& name, int dim) {
+        table[name] -> add_param(dim);
+    }
+    // 为数组参数添加维度
+    void add_size(std::string& name, int index, int size) {
+        bool result = table[name]->add_size(index, size);
+        if (!result) {
+            std::cout << "Function table has a mistake: function '" << name << "' doesn't have parameter with index '" << index
+                      << "' or doesn't need more size, which is the developer's fault.\n";
+            exit(-1); 
+        }
     }
 
     // 报错检测相关
     // 判断参数是否匹配
-    int param_num(std::string& name) {
-        return table[name] -> param_num();
+    int get_param_num(std::string& name) {
+        return table[name] -> get_param_num();
+    }
+    // 返回某个参数的维度信息，数字就是 0 维，数组就是对应维度
+    int get_param_dim(std::string& name, int index) {
+        int result = table[name]->get_param_dim(index);
+        if (result == -1) {
+            std::cout << "Function table has a mistake: function '" << name << "' doesn't have parameter with index '" << index
+                      << "', which is the developer's fault.\n";
+            exit(-1);
+        }
+        return result;
+    }
+    // 返回某个数组参数的某维的大小，这里维度从 [][3][4] 第二个 [3] 开始编号 0,1
+    int get_param_size(std::string& name, int index, int dim_index) {
+        int result = table[name]->get_param_size(index, dim_index);
+        if (result == -1) {
+            std::cout << "Function table has a mistake: function '" << name << "' doesn't have parameter with index '" << index
+                      << "' or the parameter doesn't have the dim index '" << dim_index << "', which is the developer's fault.\n";
+            exit(-1);
+        }
+        return result;
     }
     // 判断是否要有返回值
     bool if_ret_int(std::string& name) {
@@ -513,7 +605,7 @@ class ConstInitVal_Std;
 class InitVal_Std;
 
 // 定义枚举类型，用于设定错误检查模式
-enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRAY_ARRAY_UNDF };
+enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRAY_ARRAY_UNDF, PARAM_UNDF };
 
 // CompUnit      ::= CompUnitList;
 // CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
@@ -539,7 +631,8 @@ enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRA
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
-// FuncFParam    ::= BType IDENT;
+// FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
+// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
@@ -569,7 +662,20 @@ class Visitor_sema {
     int num; // 用来把 LVal 换成 Number 的变量
     char ch; // 传递计算符号
     bool cal_mode = false; // 计算模式是否开启
-    ErrorMode error_mode = NONE; // 报错检测模式
+    std::stack<ErrorMode> error_mode_stk; // 报错检测模式，下面是三个辅助函数
+    void add_error_mode(ErrorMode mode) {
+        error_mode_stk.push(mode);
+    }
+    ErrorMode get_error_mode() {
+        if (error_mode_stk.empty()) {
+            std::cout << "ErrorMode stack has a mistake, which is the developer's fault.\n";
+            exit(-2);
+        }
+        return error_mode_stk.top();
+    }
+    void recover_error_mode() {
+        error_mode_stk.pop();
+    }
     bool if_fold = false; // 是否常量折叠
 
     // 循环相关
@@ -602,23 +708,23 @@ class Visitor_sema {
         name_str = "getarray";
         func_def_table.add_func(name_str);
         func_def_table.add_type(name_str, int_str);
-        func_def_table.add_param(name_str);
+        func_def_table.add_param(name_str, 1);
         // void putint(int)
         name_str = "putint";
         func_def_table.add_func(name_str);
         func_def_table.add_type(name_str, void_str);
-        func_def_table.add_param(name_str);
+        func_def_table.add_param(name_str, 0);
         // void putch(int)
         name_str = "putch";
         func_def_table.add_func(name_str);
         func_def_table.add_type(name_str, void_str);
-        func_def_table.add_param(name_str);
+        func_def_table.add_param(name_str, 0);
         // void putarray(int, int[])
         name_str = "putarray";
         func_def_table.add_func(name_str);
         func_def_table.add_type(name_str, void_str);
-        func_def_table.add_param(name_str);
-        func_def_table.add_param(name_str);
+        func_def_table.add_param(name_str, 0);
+        func_def_table.add_param(name_str, 1);
         // void starttime()
         name_str = "starttime";
         func_def_table.add_func(name_str);
@@ -639,8 +745,10 @@ class Visitor_sema {
     InitVal_Std* init_val_std;
     // 传递数组名
     std::string array_name;
-    // 记录数组维度用于判断 a[][] 这种是否正确
-    std::unordered_map<std::string, int> array_dimension;
+
+    // 数组函数相关
+    std::stack<int> func_param_index; // 记录参数大小时要用的参数索引
+    std::stack<std::string> func_call_stk; // 存放函数名，用来判断调用函数时参数个数、维度、大小是否匹配
     
   public:
     // 以下函数用来遍历语法树生成符号表
@@ -673,7 +781,9 @@ class Visitor_sema {
 
     void sema_analysis(FuncDefAST& func_def);
     void sema_analysis(FuncFParamListAST& func_f_param_list);
-    void sema_analysis(FuncFParamAST& func_f_param);
+    void sema_analysis(FuncFParamAST_1& func_f_param);
+    void sema_analysis(FuncFParamAST_2& func_f_param);
+    void sema_analysis(ConstExpListAST& const_exp_list);
     void sema_analysis(BlockAST& block);
     void sema_analysis(BlockItemListAST& block_item_list);
     void sema_analysis(BlockItemAST_1& block_item);

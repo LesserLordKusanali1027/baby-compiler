@@ -39,7 +39,9 @@ class InitValListAST;
 
 class FuncDefAST;
 class FuncFParamListAST;
-class FuncFParamAST;
+class FuncFParamAST_1;
+class FuncFParamAST_2;
+class ConstExpListAST;
 class BlockAST;
 class BlockItemListAST;
 class BlockItemAST_1;
@@ -246,15 +248,42 @@ class GlobalIR_2 : public BaseIR {
 
 class FunctionIR : public BaseIR {
   public:
-    std::string name;
+    std::string name; // 这里 name 是带 @ 的
     std::string function_type;
-    std::vector<std::string> parameters;
+    std::vector<std::string> parameters; // 这里的名字是 % 开头
+    std::vector<int> param_dims; // 记录参数维度
+    std::unordered_map<int, std::vector<int>> param_sizes; // 记录参数各维度的大小
     std::vector<BaseIR*> basic_blocks;
+
+    // 默认约定：先加 parameter，再加 param_dim，最后加 param_size，所以不需要特意加索引
+    void add_param_size(int size) {
+        int index = parameters.size()-1;
+        param_sizes[index].push_back(size);
+    }
+    std::vector<int> get_param_size() { // 能跑就行兄弟
+        int index = parameters.size()-1;
+        return param_sizes[index];
+    }
 
     void Dump() const override {
         std::cout << "fun " << name << "(";
         for (int i = 0; i < parameters.size(); i++) {
-            std::cout << parameters[i] << ": i32";
+            if (param_dims[i] == 0) {
+                std::cout << parameters[i] << ": i32";
+            }
+            else if (param_dims[i] == 1) {
+                std::cout << parameters[i] << ": *i32";
+            }
+            else {
+                std::cout << parameters[i] << ": *";
+                for (int j = 0; j < param_dims[i]-1; j++) {
+                    std::cout << '[';
+                }
+                std::cout << "i32";
+                for (int j = param_dims[i]-2; j >= 0; j--) {
+                    std::cout << ", " << param_sizes.at(i)[j] << ']'; // .at() 提供只读访问
+                }
+            }
             if (i != parameters.size()-1)
                 std::cout << ", ";
         }
@@ -276,7 +305,22 @@ class FunctionIR : public BaseIR {
     void Dump_file(std::ofstream& file) override {
         file << "fun " << name << "(";
         for (int i = 0; i < parameters.size(); i++) {
-            file << parameters[i] << ": i32";
+            if (param_dims[i] == 0) {
+                file << parameters[i] << ": i32";
+            }
+            else if (param_dims[i] == 1) {
+                file << parameters[i] << ": *i32";
+            }
+            else {
+                file << parameters[i] << ": *";
+                for (int j = 0; j < param_dims[i]-1; j++) {
+                    file << '[';
+                }
+                file << "i32";
+                for (int j = param_dims[i]-2; j >= 0; j--) {
+                    file << ", " << param_sizes.at(i)[j] << ']'; // 继续只读访问吧
+                }
+            }
             if (i != parameters.size()-1)
                 file << ", ";
         }
@@ -304,6 +348,8 @@ class FunctionDeclIR : public BaseIR {
   public:
     std::string name; // 这里的 name 是带 @ 的
     std::string function_type; // 先认为有 "void"、"int"
+    std::vector<int> param_dims; // 记录各个参数的维度
+    std::unordered_map<int, std::vector<int>> param_sizes; // 记录参数各维度的大小
     std::vector<std::string> param_type; // 先认为有 "int"、"int[]"
 
     void Dump() const override {
@@ -570,6 +616,44 @@ class ValueIR_8 : public BaseIR {
         visitor.riscv_get(*this);
     }
 };
+class ValueIR_9 : public BaseIR {
+    // 放 @arr = alloc *[i32, 5] 这种指针的 alloc 指令
+  public:
+    std::string opcode;
+    std::string operand1; // 种类，这里固定就是 i32
+    std::vector<int> operand2s;
+    std::string target;
+
+    void Dump() const override {
+        std::cout << "  " << target << " = ";
+        std::cout << opcode << " *";
+        for (int i = 0; i < operand2s.size(); i++) {
+            std::cout << "[";
+        }
+        std::cout << operand1;
+        for (int i = operand2s.size()-1; i >= 0; i--) {
+            std::cout << ", " << operand2s[i] << "]";
+        }
+        std::cout << '\n';
+    }
+
+    void Dump_file(std::ofstream& file) override {
+        file << "  " << target << " = ";
+        file << opcode << " *";
+        for (int i = 0; i < operand2s.size(); i++) {
+            file << "[";
+        }
+        file << operand1;
+        for (int i = operand2s.size()-1; i >= 0; i--) {
+            file << ", " << operand2s[i] << "]";
+        }
+        file << '\n';
+    }
+
+    void accept(Visitor_ir& visitor) override {
+        visitor.riscv_get(*this);
+    }
+};
 
 enum LVal_Mode { START = 0, LOAD, STORE };
 
@@ -597,7 +681,8 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
-// FuncFParam    ::= BType IDENT;
+// FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
+// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
@@ -635,7 +720,7 @@ class Visitor_ast {
 
     // 表达式相关
     // 1. 临时符号，这种写法可能埋了个雷：函数不能太长，否则 int 溢出
-    int tmp_symbol;
+    int tmp_symbol = 0;
     // 2. 传递计算符号 + - * / ...
     char ch;
     // 3. 算术表达式添加：需要一个栈来存放数值和临时符号
@@ -645,20 +730,20 @@ class Visitor_ast {
     
     // if-else 分支语句相关
     // 1. 记录 then-else-end 该用第几组了
-    int branch_num;
+    int branch_num = 1;
     // 2. 记录 return 是第几组了
-    int return_num;
+    int return_num = 1;
 
     // 短路求值相关
     // 1. 基本块命名
-    int sub_exp, and_sce, and_exit, or_sce, or_exit;
+    int sub_exp = 1, and_sce = 1, and_exit = 1, or_sce = 1, or_exit = 1;
     // 2. 短路求值结果变量，可能埋了个雷，由于绕过了语义分析，之后可能出现命名冲突
     // 后续或许可以定义成全局变量？
     std::string sce_var = "@sce_result";
 
     // while 循环语句相关
     // 1. 记录 while 的 entry-body-end 该用第几组了，现在 break、continue 跳转后新建块也用这个
-    int while_num;
+    int while_num = 1;
     // 2. 记录各层 while 循环使用的标签的序号，用于为 break、continue 提供跳转目标
     std::stack<int> while_stk;
 
@@ -684,6 +769,10 @@ class Visitor_ast {
     std::string array_name; // 传递数组名用于记录数组维度信息
     std::stack<std::string> array_init_stk; // 用于存 getelemptr 的返回符号
 
+    // 数组函数相关
+    std::unordered_map<std::string, int> func_array_params; // 记录函数的数组参数名称
+    std::unordered_map<std::string, int> array_dim; // 记录每个数组的维度
+    bool if_load; // LValAST_2 是否 load
   
     // 工具函数
     void set_lval(LVal_Mode mode) {
@@ -698,17 +787,20 @@ class Visitor_ast {
         // 临时符号
         tmp_symbol = 0;
         // then-else-end 的组数
-        branch_num = 1;
+        // branch_num = 1;
         // return 的组数
-        return_num = 1;
+        // return_num = 1;
         // 短路求值的状态
-        sub_exp = 1;
-        and_sce = 1;
-        and_exit = 1;
-        or_sce = 1;
-        or_exit = 1;
+        // sub_exp = 1;
+        // and_sce = 1;
+        // and_exit = 1;
+        // or_sce = 1;
+        // or_exit = 1;
         // while 状态
-        while_num = 1;
+        // while_num = 1;
+
+        // 更新函数的数组参数
+        func_array_params.clear();
     }
     void decl_lib_func () { // 将库函数的声明加入 program->functions 和 func_table 中
         FunctionDeclIR* func_decl;
@@ -797,7 +889,9 @@ class Visitor_ast {
 
     void ir_init(FuncDefAST& func_def);
     void ir_init(FuncFParamListAST& func_f_param_list);
-    void ir_init(FuncFParamAST& func_f_param);
+    void ir_init(FuncFParamAST_1& func_f_param);
+    void ir_init(FuncFParamAST_2& func_f_param);
+    void ir_init(ConstExpListAST& const_exp_list);
     void ir_init(BlockAST& block);
     void ir_init(BlockItemListAST& block_item_list);
     void ir_init(BlockItemAST_1& block_item);

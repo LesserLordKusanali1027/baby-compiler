@@ -135,6 +135,9 @@ void Visitor_ast::ir_init(ConstSizeListAST& const_size_list) {
             (this -> exp_stk).pop();
         }
     }
+
+    // 记录数组维度，用于 LVal 判断是否需要 load
+    (this -> array_dim)[array_name] = const_size_list.constexps.size();
 }
 
 // ConstInitVal  ::= ConstExp | "{" [ConstInitValList] "}";
@@ -383,6 +386,9 @@ void Visitor_ast::ir_init(VarSizeListAST& var_size_list) {
             (this -> exp_stk).pop();
         }
     }
+
+    // 记下数组维度，用于 LVal 判断是否要 load
+    (this -> array_dim)[array_name] = var_size_list.constexps.size();
 }
 
 // InitVal       ::= Exp | "{" [InitValList] "}";
@@ -489,6 +495,15 @@ void Visitor_ast::ir_init(FuncDefAST& func_def) {
             (this -> function -> basic_blocks).push_back(this -> basic_block);
         }
     }
+    else { // 标签缺失的 bug，打个补丁
+        if ((this->basic_block->values).size()==0 && (this->basic_block->name).compare(0, 7, "%return") != 0) {
+            ValueIR_1* value2 = new ValueIR_1();
+            value2 -> opcode = "ret";
+            value2 -> operand = "0";
+            (this -> basic_block -> values).push_back(value2);
+            (this -> function -> basic_blocks).push_back(this -> basic_block);
+        }
+    }
 
     return;
 }
@@ -498,8 +513,10 @@ void Visitor_ast::ir_init(FuncFParamListAST& func_f_param_list) {
         func_f_param_list.func_f_params[i].get() -> accept(*this);
 }
 
-void Visitor_ast::ir_init(FuncFParamAST& func_f_param) {
+// FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
+void Visitor_ast::ir_init(FuncFParamAST_1& func_f_param) {
     (this -> function -> parameters).push_back("%" + func_f_param.ident);
+    (this -> function -> param_dims).push_back(0);
 
     // alloc 和 store
     ValueIR_3* value1 = new ValueIR_3();
@@ -513,6 +530,52 @@ void Visitor_ast::ir_init(FuncFParamAST& func_f_param) {
     value2 -> operand1 = "%" + func_f_param.ident;
     value2 -> operand2 = "@" + func_f_param.ident;
     (this -> basic_block -> values).push_back(value2);
+}
+void Visitor_ast::ir_init(FuncFParamAST_2& func_f_param) {
+    (this -> function -> parameters).push_back("%" + func_f_param.ident);
+    // 记录下来，用于之后决定是 getelemptr 还是 getptr
+    func_array_params[func_f_param.ident] = 1;
+
+    if (func_f_param.constexplist) {
+        func_f_param.constexplist.get() -> accept(*this);
+        // 记录数组维度，用于 LVal 判断是否 load
+        (this -> array_dim)[func_f_param.ident] = (this -> function -> param_dims).back();
+    }
+    else {
+        (this -> function -> param_dims).push_back(1);
+        // 记录数组维度，用于 LVal 判断是否 load
+        (this -> array_dim)[func_f_param.ident] = 1;
+    }
+
+    // alloc 和 store
+    ValueIR_9* value1 = new ValueIR_9();
+    value1 -> opcode = "alloc";
+    value1 -> operand1 = "i32";
+    value1 -> operand2s = this -> function -> get_param_size();
+    value1 -> target = "@" + func_f_param.ident;
+    (this -> basic_block -> values).push_back(value1);
+
+    ValueIR_4* value2 = new ValueIR_4();
+    value2 -> opcode = "store";
+    value2 -> operand1 = "%" + func_f_param.ident;
+    value2 -> operand2 = "@" + func_f_param.ident;
+    (this -> basic_block -> values).push_back(value2);
+}
+
+// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
+void Visitor_ast::ir_init(ConstExpListAST& const_exp_list) {
+    (this -> function -> param_dims).push_back(const_exp_list.constexps.size()+1);
+
+    set_lval(LOAD);
+    for (int i = 0; i < const_exp_list.constexps.size(); i++) {
+        const_exp_list.constexps[i].get() -> accept(*this);
+
+        // 此时返回值在栈顶
+        int size = std::stoi((this->exp_stk).top());
+        (this->exp_stk).pop();
+        this -> function -> add_param_size(size);
+    }
+    recover_lval();
 }
 
 void Visitor_ast::ir_init(BlockAST& block) {
@@ -863,15 +926,36 @@ void Visitor_ast::ir_init(ExpAST& exp) {
 // LVal          ::= IDENT | IDENT ExpList;
 void Visitor_ast::ir_init(LValAST_1& lval) {
     // 只要进来了，就是变量，因为常量的 AST 路径是切断的
-    if (this->lval_mode == LOAD) {
-        ValueIR_3* value = new ValueIR_3();
-        value -> opcode = "load";
-        value -> operand = "@" + lval.ident;
-        value -> target = "%" + std::to_string(this->tmp_symbol++);
-        (this->exp_stk).push(value -> target);
-        (this -> basic_block -> values).push_back(value);
+    if (this->lval_mode == LOAD) { // 有两种情况：变量、数组整体
+        if (array_dim.count(lval.ident)) { // 数组整体
+            if (func_array_params.count(lval.ident)) { // 如果是参数数组整体，用 load
+                ValueIR_3* value = new ValueIR_3();
+                value -> opcode = "load";
+                value -> operand = "@" + lval.ident;
+                value -> target = "%" + std::to_string(this->tmp_symbol++);
+                (this -> basic_block -> values).push_back(value);
+                (this -> exp_stk).push(value -> target);
+            }
+            else { // 如果是普通数组整体 
+                ValueIR_2* value1 = new ValueIR_2();
+                value1 -> opcode = "getelemptr";
+                value1 -> operand1 = "@" + lval.ident;
+                value1 -> operand2 = "0";
+                value1 -> target = "%" + std::to_string(this->tmp_symbol++);
+                (this -> basic_block -> values).push_back(value1);
+                (this -> exp_stk).push(value1 -> target);
+            }
+        }
+        else { // 变量
+            ValueIR_3* value = new ValueIR_3();
+            value -> opcode = "load";
+            value -> operand = "@" + lval.ident;
+            value -> target = "%" + std::to_string(this->tmp_symbol++);
+            (this->exp_stk).push(value -> target);
+            (this -> basic_block -> values).push_back(value);
+        }
     }
-    else if (this->lval_mode == STORE) {
+    else if (this->lval_mode == STORE) { // store 的话就只能是变量了
         ValueIR_4* value = new ValueIR_4();
         value -> opcode = "store";
         value -> operand1 = (this->exp_stk).top();
@@ -887,16 +971,29 @@ void Visitor_ast::ir_init(LValAST_2& lval) {
     if (this -> lval_mode == LOAD) {
         // 先计算索引，这里直接返回目标指针
         lval.explist.get() -> accept(*this);
-
-        // load
-        ValueIR_3* value = new ValueIR_3();
-        value -> opcode = "load";
-        value -> operand = (this->exp_stk).top();
-        (this -> exp_stk).pop();
-        value -> target = "%" + std::to_string(this->tmp_symbol++);
-        (this -> basic_block -> values).push_back(value);
-        // 传递结果
-        (this -> exp_stk).push(value -> target);
+        
+        if (if_load) { // 如果要 load，说明已经是 i32 了
+            // load
+            ValueIR_3* value = new ValueIR_3();
+            value -> opcode = "load";
+            value -> operand = (this->exp_stk).top();
+            (this -> exp_stk).pop();
+            value -> target = "%" + std::to_string(this->tmp_symbol++);
+            (this -> basic_block -> values).push_back(value);
+            // 传递结果
+            (this -> exp_stk).push(value -> target);
+        }
+        else { // 如果不用 load ，说明还是数组，这种情况仅可能出现在要为函数传参的时候，所以要多加个 getelemptr 来转换类型
+            ValueIR_2* value = new ValueIR_2();
+            value -> opcode = "getelemptr";
+            value -> operand1 = (this->exp_stk).top();
+            (this -> exp_stk).pop();
+            value -> operand2 = "0";
+            value -> target = "%" + std::to_string(this->tmp_symbol++);
+            (this -> basic_block -> values).push_back(value);
+            // 传递结果
+            (this -> exp_stk).push(value -> target);
+        }
     }
     else if (this -> lval_mode == STORE) {
         // store 前半部分
@@ -918,24 +1015,43 @@ void Visitor_ast::ir_init(LValAST_2& lval) {
 // ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
 void Visitor_ast::ir_init(ExpListAST& exp_list) {
     std::string tmp_pointer = "@" + this->array_name;
+    std::string tmp_array_name = this->array_name;
     for (int i = 0; i < exp_list.exps.size(); i++) {
         set_lval(LOAD);
         exp_list.exps[i].get() -> accept(*this);
         recover_lval();
-
-        // getelemptr
-        ValueIR_2* value = new ValueIR_2();
-        value -> opcode = "getelemptr";
-        value -> operand1 = tmp_pointer;
-        value -> operand2 = (this->exp_stk).top();
+        
+        // getelemptr、getptr
+        ValueIR_2* value1 = new ValueIR_2();
+        if (i == 0 && func_array_params.count(tmp_array_name)) { // 数组参数第一步是 load + getptr
+            // 加个 load
+            ValueIR_3* value2 = new ValueIR_3();
+            value2 -> opcode = "load";
+            value2 -> operand = tmp_pointer;
+            value2 -> target = "%" + std::to_string(this->tmp_symbol++);
+            (this -> basic_block -> values).push_back(value2);
+            tmp_pointer = value2 -> target;
+            
+            value1 -> opcode = "getptr";
+        }
+        else { // 其他都是 getelemptr
+            value1 -> opcode = "getelemptr";
+        }
+        value1 -> operand1 = tmp_pointer;
+        value1 -> operand2 = (this->exp_stk).top();
         (this -> exp_stk).pop();
-        value -> target = "%" + std::to_string(this->tmp_symbol++);
-        (this -> basic_block -> values).push_back(value);
+        value1 -> target = "%" + std::to_string(this->tmp_symbol++);
+        (this -> basic_block -> values).push_back(value1);
 
-        tmp_pointer = value -> target;
+        tmp_pointer = value1 -> target;
     }
-    // 返回指向目标元素的指针
     (this -> exp_stk).push(tmp_pointer);
+
+    // 告诉 LValAST_2 是否 load
+    if ((this->array_dim)[tmp_array_name] == exp_list.exps.size()) // 如果是数字了，就要 load
+        if_load = true;
+    else // 如果还是数组维度的，就不 load，而是 getelemptr 来准备传参
+        if_load = false;
 }
 
 void Visitor_ast::ir_init(PrimaryExpAST_1& primary_exp) {
@@ -961,7 +1077,6 @@ void Visitor_ast::ir_init(UnaryExpAST_1& unary_exp) {
     unary_exp.primaryexp.get() -> accept(*this);
     return;
 }
-
 void Visitor_ast::ir_init(UnaryExpAST_2& unary_exp) {
     unary_exp.unaryexp.get() -> accept(*this);
     unary_exp.unaryop.get() -> accept(*this);

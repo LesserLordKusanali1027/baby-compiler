@@ -111,6 +111,12 @@ void Visitor_ir::stack_setup(FunctionIR& function) {
                 var_offset[value->target] = var_space;
                 var_space += 4*size;
             }
+            else if (dynamic_cast<ValueIR_9*>(basic_block->values[j])) {
+                ValueIR_9* value = dynamic_cast<ValueIR_9*>(basic_block->values[j]);
+                // 数组参数 alloc ，只需 4 字节
+                var_offset[value->target] = var_space;
+                var_space += 4;
+            }
 
             // 计算 a0_space 和 param_space
             if (dynamic_cast<ValueIR_6*>(basic_block->values[j])) {
@@ -359,7 +365,7 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         }
 
         // 获得偏移单位
-        int size = array_info.Get_Size(value.operand1);
+        int size = array_info.Get_Size_Low(value.operand1);
 
         file << "  li    " << register_name[current_register] << ", " << size << "\n";
 
@@ -393,7 +399,36 @@ void Visitor_ir::riscv_get(ValueIR_2& value) {
         riscv_sw(register_name[current_register+1], var_offset[value.target], register_name[current_register+2]);
 
         // 记录新符号
-        array_info.Add_Symbol(value.target, value.operand1);
+        array_info.Add_Symbol(value.target, value.operand1, true);
+    }
+    else if (value.opcode == "getptr") {
+        if (value.operand2[0] == '%') {
+            riscv_lw(register_name[current_register++], var_offset[value.operand2]);
+        }
+        else {
+            file << "  li    " << register_name[current_register++] << ", "
+                 << value.operand2 << '\n';
+        }
+
+        // 获得偏移单位
+        int size = array_info.Get_Size_Equal(value.operand1);
+
+        file << "  li    " << register_name[current_register] << ", " << size << "\n";
+
+        file << "  mul   " << register_name[current_register] << ", "
+             << register_name[current_register-1] << ", " << register_name[current_register] << '\n';
+
+        // 只可能是临时符号，这就比较好了
+        riscv_lw(register_name[current_register+1], var_offset[value.operand1]);
+
+        file << "  add   " << register_name[current_register+1] << ", "
+             << register_name[current_register] << ", "
+             << register_name[current_register+1] << '\n';
+
+        riscv_sw(register_name[current_register+1], var_offset[value.target], register_name[current_register+2]);
+
+        // 记录新符号
+        array_info.Add_Symbol(value.target, value.operand1, false);
     }
 
     current_register = 1;
@@ -421,6 +456,11 @@ void Visitor_ir::riscv_get(ValueIR_3& value) {
         else { // load 的是局部变量时
             riscv_lw(register_name[current_register], var_offset[value.operand]);
             riscv_sw(register_name[current_register], var_offset[value.target], register_name[current_register+1]);
+
+            // 如果 load 的操作数是数组，把临时符号记入 array_info
+            if (array_info.If_Exist(value.operand)) {
+                array_info.Add_Symbol(value.target, value.operand, false);
+            }
         }
     }
 
@@ -465,7 +505,7 @@ void Visitor_ir::riscv_get(ValueIR_4& value) {
             file << "  sw    " << register_name[current_register] << ", "
                  << "0(" << register_name[current_register+1] << ")\n";
         }
-        else if (value.operand1[0]!='%' && value.operand1[0]!='@') { // 数字
+        else if (value.operand1[0]!='%' && value.operand1[0]!='@') { // 数字存入局部变量 @
             file << "  li    " << register_name[current_register] << ", "
                  << value.operand1 << '\n';
 
@@ -552,6 +592,13 @@ void Visitor_ir::riscv_get(ValueIR_7& value) {
 
 // 数组 alloc 指令
 void Visitor_ir::riscv_get(ValueIR_8& value) {
+    // 记录到 array_info 中
+    array_info.Add_Array(value.operand2s, value.target);
+    array_info.Add_Symbol(value.target);
+}
+
+// 数组参数 alloc 指令
+void Visitor_ir::riscv_get(ValueIR_9& value) {
     // 记录到 array_info 中
     array_info.Add_Array(value.operand2s, value.target);
     array_info.Add_Symbol(value.target);

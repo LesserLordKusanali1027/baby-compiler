@@ -543,14 +543,14 @@ void Visitor_sema::sema_analysis(ConstDefAST_1& const_def) {
     }
 
     this->cal_mode = true;
-    this->error_mode = VAR_CARRAY_ARRAY_UNDF;
+    add_error_mode(VAR_CARRAY_ARRAY_UNDF);
 
     const_def.constinitval.get() -> accept(*this);
     symbol_table_stack.add_const(const_def.ident, stk.top());
     stk.pop();
 
     this->cal_mode = false;
-    this->error_mode = NONE;
+    recover_error_mode();
 }
 void Visitor_sema::sema_analysis(ConstDefAST_2& const_def) {
     // 符号名有重复就报错，数组也一样
@@ -592,10 +592,10 @@ void Visitor_sema::sema_analysis(ConstSizeListAST& const_size_list) {
 
     for (int i = 0; i < const_size_list.constexps.size(); i++) {
         this -> cal_mode = true;
-        this -> error_mode = VAR_CARRAY_ARRAY_UNDF;
+        add_error_mode(VAR_CARRAY_ARRAY_UNDF);
         const_size_list.constexps[i].get() -> accept(*this);
         this -> cal_mode = false;
-        this -> error_mode = NONE;
+        recover_error_mode();
 
         // 将大小存入 ConstInitVal_Std
         const_init_val_std -> Add_Size((this -> stk).top());
@@ -663,10 +663,10 @@ void Visitor_sema::sema_analysis(ConstInitValListAST& const_init_val_list) {
         if (dynamic_cast<ConstInitValAST_1*>(const_init_val_list.constinitvals[i].get())) {
             // 求值
             this -> cal_mode = true;
-            this -> error_mode = VAR_CARRAY_ARRAY_UNDF;
+            add_error_mode(VAR_CARRAY_ARRAY_UNDF);
             const_init_val_list.constinitvals[i].get() -> accept(*this);
             this -> cal_mode = false;
-            this -> error_mode = NONE;
+            recover_error_mode();
 
             // 将结果存入 AST
             this -> const_init_val_std -> Add_Val((this->stk).top());
@@ -721,12 +721,12 @@ void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
     if (this -> global_decl) {
         // 设定成计算 const 右侧的模式
         this->cal_mode = true;
-        this->error_mode = VAR_CARRAY_ARRAY_UNDF;
+        add_error_mode(VAR_CARRAY_ARRAY_UNDF);
         // 计算
         var_def.initval.get() -> accept(*this);
         // 恢复
         this->cal_mode = false;
-        this->error_mode = NONE;
+        recover_error_mode();
 
         // 修改 AST 树
         // 先新建节点
@@ -758,9 +758,9 @@ void Visitor_sema::sema_analysis(VarDefAST_2& var_def) {
         var_def.initval = std::move(init_val);
     }
     else {
-        this->error_mode = CARRAY_ARRAY_UNDF;
+        add_error_mode(CARRAY_ARRAY_UNDF);
         var_def.initval.get() -> accept(*this);
-        this->error_mode = NONE;
+        recover_error_mode();
     }
 }
 void Visitor_sema::sema_analysis(VarDefAST_3& var_def) {
@@ -819,10 +819,10 @@ void Visitor_sema::sema_analysis(VarSizeListAST& var_size_list) {
     for (int i = 0; i < var_size_list.constexps.size(); i++) {
         // 对数组大小做常量折叠
         this -> cal_mode = true;
-        this -> error_mode = VAR_CARRAY_ARRAY_UNDF;
+        add_error_mode(VAR_CARRAY_ARRAY_UNDF);
         var_size_list.constexps[i].get() -> accept(*this);
         this -> cal_mode = false;
-        this -> error_mode = NONE;
+        recover_error_mode();
 
         // 将大小存入 InitVal_Std
         this -> init_val_std -> Add_Size((this -> stk).top());
@@ -892,10 +892,10 @@ void Visitor_sema::sema_analysis(InitValListAST& init_val_list) {
             if (dynamic_cast<InitValAST_1*>(init_val_list.initvals[i].get())) {
                 // 求值
                 this -> cal_mode = true;
-                this -> error_mode = VAR_CARRAY_ARRAY_UNDF;
+                add_error_mode(VAR_CARRAY_ARRAY_UNDF);
                 init_val_list.initvals[i].get() -> accept(*this);
                 this -> cal_mode = false;
-                this -> error_mode = NONE;
+                recover_error_mode();
 
                 // 将结果存入 InitVal_Std
                 this -> init_val_std -> Add_Val((this -> stk).top());
@@ -910,9 +910,9 @@ void Visitor_sema::sema_analysis(InitValListAST& init_val_list) {
         for (int i = 0; i < init_val_list.initvals.size(); i++) {
             if (dynamic_cast<InitValAST_1*>(init_val_list.initvals[i].get())) {
                 // 不计算，只折叠常量
-                this->error_mode = CARRAY_ARRAY_UNDF;
+                add_error_mode(CARRAY_ARRAY_UNDF);
                 init_val_list.initvals[i].get() -> accept(*this);
-                this->error_mode = NONE;
+                recover_error_mode();
 
                 // 将节点拼入 InitVal_Std
                 // 即使是传参也要用 std::move 转移所有权
@@ -946,18 +946,38 @@ void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
     symbol_table_stack.push_table();
 
     // 加入参数
-    if (func_def.func_f_param_list)
+    if (func_def.func_f_param_list) // 这里会用到记下的函数名
         func_def.func_f_param_list.get() -> accept(*this);
 
     // 检查函数定义表是否与函数声明表的内容匹配
     if (func_decl_table.if_exist(this -> func_name)) {
-        if (func_decl_table.param_num(this -> func_name) != func_def_table.param_num(this -> func_name)) {
+        // 判断参数个数是否匹配
+        if (func_decl_table.get_param_num(this -> func_name) != func_def_table.get_param_num(this -> func_name)) {
             std::cout << "Semantic analysis failed: function '" << this -> func_name << "' definition has different parameters with its declaration.\n";
             exit(-1);
         }
+        // 返回值是否匹配
         if (func_decl_table.if_ret_int(this -> func_name) != func_def_table.if_ret_int(this -> func_name)) {
             std::cout << "Semantic analysis failed: function '" << this -> func_name << "' definition has different return with its declaration.\n";
             exit(-1);
+        }
+
+        // 每个参数的维度是否匹配
+        int param_num = func_decl_table.get_param_num(this -> func_name);
+        for (int i = 0; i < param_num; i++) {
+            if (func_decl_table.get_param_dim(this -> func_name, i) != func_def_table.get_param_dim(this -> func_name, i)) {
+                std::cout << "Semantic analysis failed: function '" << this -> func_name << "' definition has different parameter dimension with its declaration.\n";
+                exit(-1);
+            }
+
+            // 每个参数的每个维度的大小是否匹配
+            int dim = func_decl_table.get_param_dim(this -> func_name, i);
+            for (int j = 0; j < dim-1; j++) {
+                if (func_decl_table.get_param_size(this -> func_name, i, j) != func_def_table.get_param_size(this -> func_name, i, j)) {
+                    std::cout << "Semantic analysis failed: function '" << this -> func_name << "' definition has different parameter size with its declaration.\n";
+                    exit(-1);
+                }
+            }
         }
 
         // 最后把函数声明移除，只留函数定义
@@ -974,22 +994,97 @@ void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
 // FuncFParamList ::= FuncFParam | FuncFParamList "," FuncFParam;
 void Visitor_sema::sema_analysis(FuncFParamListAST& func_f_param_list) {
     for (int i = 0; i < func_f_param_list.func_f_params.size(); i++) {
-        func_def_table.add_param(this->func_name);
+        (this -> func_param_index).push(i); // 记录某个参数的大小时可能要用
         func_f_param_list.func_f_params[i].get() -> accept(*this);
+        (this -> func_param_index).pop();
     }
 }
 
-// FuncFParam  ::= BType IDENT;
-void Visitor_sema::sema_analysis(FuncFParamAST& func_f_param) {
+// FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
+void Visitor_sema::sema_analysis(FuncFParamAST_1& func_f_param) {
     if (symbol_table_stack.if_exist_last(func_f_param.ident)) {
         std::cout << "Semantic analysis failed: '" << func_f_param.ident << "' redefined.\n";
         exit(-1);
     }
 
-    symbol_table_stack.add_var(func_f_param.ident);
+    // 将参数加入函数信息表
+    func_def_table.add_param(this->func_name, 0); // 0 维的参数
 
+    symbol_table_stack.add_var(func_f_param.ident);
     // 为变量名做注释
     func_f_param.ident = symbol_table_stack.get_var(func_f_param.ident);
+}
+void Visitor_sema::sema_analysis(FuncFParamAST_2& func_f_param) {
+    if (symbol_table_stack.if_exist_last(func_f_param.ident)) {
+        std::cout << "Semantic analysis failed: '" << func_f_param.ident << "' redefined.\n";
+        exit(-1);
+    }
+
+    // 加入符号表
+    symbol_table_stack.add_var_array(func_f_param.ident);
+
+    // 如果只有 [] ，维度为 1
+    if (!func_f_param.constexplist) {
+        func_def_table.add_param(this->func_name, 1);
+        symbol_table_stack.add_array_dim(func_f_param.ident, 1);
+    }
+    else {
+        this -> array_name = func_f_param.ident;
+        func_f_param.constexplist.get() -> accept(*this);
+    }
+
+    
+    // 为变量名做注释
+    func_f_param.ident = symbol_table_stack.get_var_array(func_f_param.ident);
+}
+
+// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
+void Visitor_sema::sema_analysis(ConstExpListAST& const_exp_list) {
+    // 将参数维度加入函数定义表
+    func_def_table.add_param(this->func_name, const_exp_list.constexps.size()+1);
+    // 将数组变量维度加入符号表
+    symbol_table_stack.add_array_dim(this->array_name, const_exp_list.constexps.size()+1);
+
+    for (int i = 0; i < const_exp_list.constexps.size(); i++) {
+        // 先计算常量
+        this -> cal_mode = true;
+        add_error_mode(VAR_CARRAY_ARRAY_UNDF);
+        const_exp_list.constexps[i].get() -> accept(*this);
+        this -> cal_mode = false;
+        recover_error_mode();
+
+        // 获得结果
+        int size = (this -> stk).top();
+        (this -> stk).pop();
+
+        // 修改 AST
+        auto const_exp = std::make_unique<ConstExpAST>();
+        auto exp = std::make_unique<ExpAST>();
+        auto l_or_exp = std::make_unique<LOrExpAST_1>();
+        auto l_and_exp = std::make_unique<LAndExpAST_1>();
+        auto eq_exp = std::make_unique<EqExpAST_1>();
+        auto rel_exp = std::make_unique<RelExpAST_1>();
+        auto add_exp = std::make_unique<AddExpAST_1>();
+        auto mul_exp = std::make_unique<MulExpAST_1>();
+        auto unary_exp = std::make_unique<UnaryExpAST_1>();
+        auto primary_exp = std::make_unique<PrimaryExpAST_3>();
+        auto number = std::make_unique<NumberAST>();
+        number -> num = size;
+        primary_exp -> number = std::move(number);
+        unary_exp -> primaryexp = std::move(primary_exp);
+        mul_exp -> unaryexp = std::move(unary_exp);
+        add_exp -> mulexp = std::move(mul_exp);
+        rel_exp -> addexp = std::move(add_exp);
+        eq_exp -> relexp = std::move(rel_exp);
+        l_and_exp -> eqexp = std::move(eq_exp);
+        l_or_exp -> landexp = std::move(l_and_exp);
+        exp -> lorexp = std::move(l_or_exp);
+        const_exp -> exp = std::move(exp);
+        const_exp_list.constexps[i] = std::move(const_exp);
+
+        // 将参数大小加入
+        func_def_table.add_size(this->func_name, (this->func_param_index).top(), size);
+    }
 }
 
 // Block         ::= "{" BlockItemList "}";
@@ -1026,12 +1121,13 @@ void Visitor_sema::sema_analysis(StmtAST_2& stmt) {
 // MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
 // 复制了之前 Stmt 的四个函数
 void Visitor_sema::sema_analysis(MatchedStmtAST_1& matched_stmt) {
-    this->error_mode = CONST_CARRAY_ARRAY_UNDF;
+    add_error_mode(CONST_CARRAY_ARRAY_UNDF);
     matched_stmt.lval.get() -> accept(*this);
+    recover_error_mode();
 
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     matched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_2& matched_stmt) {
     if (!matched_stmt.exp && !func_def_table.if_ret_int(this->func_name))
@@ -1044,32 +1140,32 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_2& matched_stmt) {
         std::cout << "Semantic analysis failed: function '" << this->func_name << "' should return nothing.\n";
         exit(-1);
     }
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     matched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_3& matched_stmt) {
     if (!matched_stmt.exp)
         return;
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     matched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_4& matched_stmt) {
     matched_stmt.block.get() -> accept(*this);
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_5& matched_stmt) {
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     matched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 
     matched_stmt.matchedstmt1.get() -> accept(*this);
     matched_stmt.matchedstmt2.get() -> accept(*this);
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_6& matched_stmt) {
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     matched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 
     // 为了确保 break 和 continue 位于 while 中，否则语义错误
     this->while_levels++;
@@ -1091,16 +1187,16 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_8& matched_stmt) { // continue
 
 // UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
 void Visitor_sema::sema_analysis(UnmatchedStmtAST_1& unmatched_stmt) {
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     unmatched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 
     unmatched_stmt.stmt.get() -> accept(*this);
 }
 void Visitor_sema::sema_analysis(UnmatchedStmtAST_2& unmatched_stmt) {
-    this->error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(CARRAY_ARRAY_UNDF);
     unmatched_stmt.exp.get() -> accept(*this);
-    this->error_mode = NONE;
+    recover_error_mode();
 
     unmatched_stmt.matchedstmt.get() -> accept(*this);
     unmatched_stmt.unmatchedstmt.get() -> accept(*this);
@@ -1120,7 +1216,7 @@ void Visitor_sema::sema_analysis(LValAST_1& lval) {
         exit(-1);
     }
 
-    if (this->error_mode == CONST_CARRAY_ARRAY_UNDF) { // 赋值语句左侧
+    if (get_error_mode() == CONST_CARRAY_ARRAY_UNDF) { // 赋值语句左侧
         if (symbol_table_stack.if_const(lval.ident)) {
             std::cout << "Semantic analysis failed: const '" << lval.ident << "' cannot be assigned again.\n";
             exit(-1);
@@ -1134,7 +1230,7 @@ void Visitor_sema::sema_analysis(LValAST_1& lval) {
             exit(-1);
         }
     }
-    else if (this->error_mode == VAR_CARRAY_ARRAY_UNDF) { // 位于常量表达式中的时候
+    else if (get_error_mode() == VAR_CARRAY_ARRAY_UNDF) { // 位于常量表达式中的时候
         if (symbol_table_stack.if_var(lval.ident)) {
             std::cout << "Semantic analysis failed: var '" << lval.ident << "' cannot be used to assign for const or global var.\n";
             exit(-1);
@@ -1148,7 +1244,7 @@ void Visitor_sema::sema_analysis(LValAST_1& lval) {
             exit(-1);
         }
     }
-    else if (this->error_mode == CARRAY_ARRAY_UNDF) { // 位于普通表达式中时
+    else if (get_error_mode() == CARRAY_ARRAY_UNDF) { // 位于普通表达式中时
         if (symbol_table_stack.if_const_array(lval.ident)) {
             std::cout << "Semantic analysis failed: const array '" << lval.ident << "' cannot be used as a whole here.\n";
             exit(-1);
@@ -1158,15 +1254,78 @@ void Visitor_sema::sema_analysis(LValAST_1& lval) {
             exit(-1);
         }
     }
+    else if (get_error_mode() == PARAM_UNDF) { // 作为函数参数时
+        if (symbol_table_stack.if_const(lval.ident)) {
+            int param_dim = -1;
+            if (func_decl_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+            else if (func_def_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+
+            if (param_dim != 0) {
+                std::cout << "Semantic analysis failed: const '" << lval.ident << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+        else if (symbol_table_stack.if_var(lval.ident)) {
+            int param_dim = -1;
+            if (func_decl_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+            else if (func_def_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+
+            if (param_dim != 0) {
+                std::cout << "Semantic analysis failed: var '" << lval.ident << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+        else if (symbol_table_stack.if_const_array(lval.ident)) {
+            int array_dim = (this -> symbol_table_stack).get_array_dim(lval.ident);
+            int param_dim = -1;
+            if (func_decl_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+            else if (func_def_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+            
+            if (param_dim != array_dim) {
+                std::cout << "Semantic analysis failed: const array '" << lval.ident << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+        else if (symbol_table_stack.if_var_array(lval.ident)) {
+            int array_dim = (this -> symbol_table_stack).get_array_dim(lval.ident);
+            int param_dim = -1;
+            if (func_decl_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+            else if (func_def_table.if_exist((this->func_call_stk).top())) {
+                param_dim = func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+            }
+            
+            if (param_dim != array_dim) {
+                std::cout << "Semantic analysis failed: var array '" << lval.ident << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+    }
 
     // 获取 IDENT 对应的值，向上返回，以便替换成 NumberAST
     if (symbol_table_stack.if_const(lval.ident)) {
         this->num = symbol_table_stack.get_const(lval.ident);
         this->if_fold = true;
     }
-    else { // 修改变量名
+    else if (symbol_table_stack.if_var(lval.ident)) // 修改变量名
         lval.ident = symbol_table_stack.get_var(lval.ident);
-    }
+    else if (symbol_table_stack.if_const_array(lval.ident))
+        lval.ident = symbol_table_stack.get_const_array(lval.ident);
+    else if (symbol_table_stack.if_var_array(lval.ident))
+        lval.ident = symbol_table_stack.get_var_array(lval.ident);
 }
 void Visitor_sema::sema_analysis(LValAST_2& lval) {
     // 先进行报错检测
@@ -1185,13 +1344,13 @@ void Visitor_sema::sema_analysis(LValAST_2& lval) {
         exit(-1);
     }
 
-    if (this->error_mode == CONST_CARRAY_ARRAY_UNDF) { // 数组常量不能再次赋值
+    if (get_error_mode() == CONST_CARRAY_ARRAY_UNDF) { // 数组常量不能再次赋值
         if (symbol_table_stack.if_const_array(lval.ident)) {
             std::cout << "Semantic analysis failed: const array '" << lval.ident << "' cannot be assigned again.\n";
             exit(-1);
         }
     }
-    else if (this->error_mode == VAR_CARRAY_ARRAY_UNDF) { // 只要是数组就不能给常量和全局变量赋值
+    else if (get_error_mode() == VAR_CARRAY_ARRAY_UNDF) { // 只要是数组就不能给常量和全局变量赋值
         if (symbol_table_stack.if_const_array(lval.ident) || symbol_table_stack.if_var_array(lval.ident)) {
             std::cout << "Semantic analysis failed: array '" << lval.ident << "' cannot be used to assign for const or global var.\n";
             exit(-1);
@@ -1210,16 +1369,34 @@ void Visitor_sema::sema_analysis(LValAST_2& lval) {
 
 // ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
 void Visitor_sema::sema_analysis(ExpListAST& exp_list) {
-    // 检查维度是否匹配，由于还没出现函数传参，要求必须每个维度都有 index
-    if (symbol_table_stack.get_array_dim(this->array_name) != exp_list.exps.size()) {
-        std::cout << "Semantic analysis failed: array '" << this->array_name << "' index doesn't match its dimension.\n";
-        exit(-1);
+    // 数组不做参数的时候，下标要给全，必须是 int，要求必须每个维度都有 index
+    if (get_error_mode() == CARRAY_ARRAY_UNDF) {
+        if (symbol_table_stack.get_array_dim(this->array_name) != exp_list.exps.size()) {
+            std::cout << "Semantic analysis failed: array '" << this->array_name << "' index doesn't match its dimension.\n";
+            exit(-1);
+        }
+    }
+    // 做参数的时候，就要计算 参数维度+传参维度 ?= 数组维度
+    else if (get_error_mode() == PARAM_UNDF) {
+        int array_dim = symbol_table_stack.get_array_dim(this->array_name);
+        int param_dim = -1;
+        if (func_decl_table.if_exist((this->func_call_stk).top())) {
+            param_dim = func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+        }
+        else if (func_def_table.if_exist((this->func_call_stk).top())) {
+            param_dim = func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top());
+        }
+
+        if (array_dim != param_dim + exp_list.exps.size()) {
+            std::cout << "Semantic analysis failed: array '" << this->array_name << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+            exit(-1);
+        }
     }
 
     for (int i = 0; i < exp_list.exps.size(); i++) {
-        this->error_mode = CARRAY_ARRAY_UNDF;
+        add_error_mode(CARRAY_ARRAY_UNDF);
         exp_list.exps[i].get() -> accept(*this);
-        this->error_mode = NONE;
+        recover_error_mode();
     }
 }
 
@@ -1239,6 +1416,21 @@ void Visitor_sema::sema_analysis(PrimaryExpAST_3& primary_exp) {
 void Visitor_sema::sema_analysis(NumberAST& number) {
     if (this->cal_mode) {
         stk.push(number.num);
+    }
+    // 这里也要加检测报错了
+    if (get_error_mode() == PARAM_UNDF) {
+        if (func_decl_table.if_exist((this->func_call_stk).top())) {
+            if (func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top()) != 0) {
+                std::cout << "Semantic analysis failed: number '" << number.num << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+        else if (func_def_table.if_exist((this->func_call_stk).top())) {
+            if (func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top()) != 0) {
+                std::cout << "Semantic analysis failed: number '" << number.num << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
     }
 }
 
@@ -1295,19 +1487,48 @@ void Visitor_sema::sema_analysis(UnaryExpAST_3& unary_exp) {
         exit(-1);
     }
 
+    // 如果这个函数是作为参数被调用的
+    // 即使是 1+Func() 这种形式，也需要函数返回类型是 int，此处参数维度是 0
+    if (get_error_mode() == PARAM_UNDF) {
+        if (func_decl_table.if_exist(unary_exp.ident)) {
+            if (!func_decl_table.if_ret_int(unary_exp.ident)) {
+                std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' should return int as parameter.\n";
+                exit(-1);
+            }
+            if (func_decl_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top()) != 0) {
+                std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+        else if (func_def_table.if_exist(unary_exp.ident)) {
+            if (!func_def_table.if_ret_int(unary_exp.ident)) {
+                std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' should return int as parameter.\n";
+                exit(-1);
+            }
+            if (func_def_table.get_param_dim((this->func_call_stk).top(), (this->func_param_index).top()) != 0) {
+                std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' doesn't match the dimension of parameter required by the function '" << (this->func_call_stk).top() << "'.\n";
+                exit(-1);
+            }
+        }
+    }
+
     if (unary_exp.func_r_param_list) {
-        this -> func_call = unary_exp.ident;
+        // 函数名入栈，供后面检测
+        (this -> func_call_stk).push(unary_exp.ident);
+        // 进入参数列表
         unary_exp.func_r_param_list.get() -> accept(*this);
+        // 复原
+        (this -> func_call_stk).pop();
     }
     else {
         if (func_decl_table.if_exist(unary_exp.ident)) {
-            if (func_decl_table.param_num(unary_exp.ident) != 0) {
+            if (func_decl_table.get_param_num(unary_exp.ident) != 0) {
                 std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' parameter not match when called.\n";
                 exit(-1);
             }
         }
         else if (func_def_table.if_exist(unary_exp.ident)) {
-            if (func_def_table.param_num(unary_exp.ident) != 0) {
+            if (func_def_table.get_param_num(unary_exp.ident) != 0) {
                 std::cout << "Semantic analysis failed: function '" << unary_exp.ident << "' parameter not match when called.\n";
                 exit(-1);
             }
@@ -1317,24 +1538,28 @@ void Visitor_sema::sema_analysis(UnaryExpAST_3& unary_exp) {
 
 // FuncRParamList ::= Exp | FuncRParamList "," Exp;
 void Visitor_sema::sema_analysis(FuncRParamListAST& func_r_param_list) {
-    if (func_decl_table.if_exist(this->func_call)) {
-        if (func_decl_table.param_num(this->func_call) != func_r_param_list.func_r_params.size()) {
+    this -> func_call = (this->func_call_stk).top();
+
+    if (func_decl_table.if_exist(this -> func_call)) {
+        if (func_decl_table.get_param_num(this->func_call) != func_r_param_list.func_r_params.size()) {
             std::cout << "Semantic analysis failed: function '" << this->func_call << "' parameter not match when called.\n";
             exit(-1);
         }
     }
-    else if (func_def_table.if_exist(this->func_call)) {
-        if (func_def_table.param_num(this->func_call) != func_r_param_list.func_r_params.size()) {
+    else if (func_def_table.if_exist(this -> func_call)) {
+        if (func_def_table.get_param_num(this->func_call) != func_r_param_list.func_r_params.size()) {
             std::cout << "Semantic analysis failed: function '" << this->func_call << "' parameter not match when called.\n";
             exit(-1);
         }
     }
 
-    this -> error_mode = CARRAY_ARRAY_UNDF;
+    add_error_mode(PARAM_UNDF); // 参数报错模式
     for (int i = 0; i < func_r_param_list.func_r_params.size(); i++) {
+        (this -> func_param_index).push(i); // 参数索引，又用上了
         func_r_param_list.func_r_params[i].get() -> accept(*this);
+        (this -> func_param_index).pop();
     }
-    this -> error_mode = NONE;
+    recover_error_mode();
 }
 
 // UnaryOp     ::= "+" | "-" | "!";

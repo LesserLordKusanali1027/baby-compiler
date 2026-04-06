@@ -649,8 +649,8 @@ class FuncFParamListAST : public BaseAST {
     }
 };
 
-// FuncFParam  ::= BType IDENT;
-class FuncFParamAST : public BaseAST {
+// FuncFParam ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
+class FuncFParamAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> btype;
     std::string ident;
@@ -659,6 +659,61 @@ class FuncFParamAST : public BaseAST {
         std::cout << "FuncFParamAST { ";
         btype -> Dump();
         std::cout << ", " << ident << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class FuncFParamAST_2 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> btype;
+    std::string ident;
+    std::unique_ptr<BaseAST> constexplist;
+
+    void Dump() const override {
+        std::cout << "FuncFParamAST { ";
+        btype -> Dump();
+        std::cout << ", " << ident << ", [], ";
+        if (constexplist)
+            constexplist -> Dump();
+        else
+            std::cout << "NULL";
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
+class ConstExpListAST : public BaseAST {
+  public:
+    std::vector<std::unique_ptr<BaseAST>> constexps;
+
+    void push_back(std::unique_ptr<BaseAST> constexp) {
+        constexps.push_back(std::move(constexp));
+    }
+
+    void Dump() const override {
+        std::cout << "ConstExpListAST { ";
+        for (int i = 0; i < constexps.size(); i++) {
+            std::cout << "[ ";
+            constexps[i] -> Dump();
+            std::cout << " ]";
+            if (i != constexps.size()-1)
+                std::cout << ", ";
+        }
+        std::cout << " }";
     }
 
     void accept(Visitor_ast& visitor) override {

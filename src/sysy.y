@@ -45,6 +45,8 @@ using namespace std;
   VarSizeListAST* varsizelist_val;
   InitValListAST* initvallist_val;
   ExpListAST* explist_val;
+
+  ConstExpListAST* constexplist_val;
 }
 
 // lexer 返回的所有 token 种类的声明
@@ -70,6 +72,7 @@ using namespace std;
 %type <varsizelist_val> VarSizeList
 %type <initvallist_val> InitValList
 %type <explist_val> ExpList
+%type <constexplist_val> ConstExpList
 
 %%
 
@@ -197,7 +200,6 @@ ConstSizeList
   }
   ;
 
-// ConstInitVal ::= ConstExp | "{" [ConstExpList] "}";
 // ConstInitVal ::= ConstExp | "{" [ConstInitValList] "}";
 ConstInitVal
   : ConstExp {
@@ -294,7 +296,6 @@ VarSizeList
   }
   ;
 
-// InitVal ::= Exp | "{" [ExpList] "}";
 // InitVal ::= Exp | "{" [InitValList] "}";
 InitVal
   : Exp {
@@ -369,14 +370,42 @@ FuncFParamList
   }
   ;
 
-// FuncFParam  ::= BType IDENT;
+// FuncFParam ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
 FuncFParam
   : BType IDENT {
-    auto ast = new FuncFParamAST();
+    auto ast = new FuncFParamAST_1();
     ast -> btype = unique_ptr<BaseAST>($1);
     ast -> ident = *unique_ptr<string>($2);
     $$ = ast;
   }
+  | BType IDENT '[' ']' {
+    auto ast = new FuncFParamAST_2();
+    ast -> btype = unique_ptr<BaseAST>($1);
+    ast -> ident = *unique_ptr<string>($2);
+    ast -> constexplist = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | BType IDENT '[' ']' ConstExpList {
+    auto ast = new FuncFParamAST_2();
+    ast -> btype = unique_ptr<BaseAST>($1);
+    ast -> ident = *unique_ptr<string>($2);
+    ast -> constexplist = unique_ptr<BaseAST>($5);
+    $$ = ast;
+  }
+  ;
+
+// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
+ConstExpList
+  : '[' ConstExp ']' {
+    auto ast = new ConstExpListAST();
+    ast -> push_back(unique_ptr<BaseAST>($2));
+    $$ = ast;
+  }
+  | ConstExpList '[' ConstExp ']' {
+    $1 -> push_back(unique_ptr<BaseAST>($3));
+    $$ = $1;
+  }
+  ;
 
 // Block         ::= "{" BlockItemList "}";
 Block
