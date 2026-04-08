@@ -492,7 +492,7 @@ void Visitor_sema::sema_analysis(CompUnitListAST& comp_unit_list) {
     symbol_table_stack.pop_table();
 }
 
-// CompUnitItem  ::= FuncDef | Decl;
+// CompUnitItem  ::= FuncDef | Decl | FuncDecl;
 void Visitor_sema::sema_analysis(CompUnitItemAST_1& comp_unit_item) {
     comp_unit_item.func_def.get() -> accept(*this);
 }
@@ -500,6 +500,9 @@ void Visitor_sema::sema_analysis(CompUnitItemAST_2& comp_unit_item) {
     this -> global_decl = true;
     comp_unit_item.decl.get() -> accept(*this);
     this -> global_decl = false;
+}
+void Visitor_sema::sema_analysis(CompUnitItemAST_3& comp_unit_item) {
+    comp_unit_item.funcdecl.get() -> accept(*this);
 }
 
 // Decl          ::= ConstDecl | VarDecl;
@@ -519,6 +522,9 @@ void Visitor_sema::sema_analysis(ConstDeclAST& const_decl) {
 void Visitor_sema::sema_analysis(BTypeAST& btype) {
     if (this -> if_func_def) {
         func_def_table.add_type(this->func_name, btype.btype);
+    }
+    else if (this -> if_func_decl) {
+        func_decl_table.add_type(this->func_name, btype.btype);
     }
 }
 
@@ -991,6 +997,39 @@ void Visitor_sema::sema_analysis(FuncDefAST& func_def) {
     symbol_table_stack.pop_table();
 }
 
+// FuncDecl      ::= BType IDENT "(" [FuncFParamList] ")" ";";
+void Visitor_sema::sema_analysis(FuncDeclAST& func_decl) {
+    // 判断是否已经定义了/声明了
+    if (func_def_table.if_exist(func_decl.ident)) {
+        std::cout << "Semantic analysis failed: function '" << func_decl.ident << "' is already defined or conflict with the name of library function.\n";
+        exit(-1);
+    }
+    if (func_decl_table.if_exist(func_decl.ident)) {
+        std::cout << "Semantic analysis failed: function '" << func_decl.ident << "' is already declared.\n";
+        exit(-1);
+    }
+
+    this -> if_func_decl = true;
+
+    // 向函数声明表中加入信息
+    // 加入函数名
+    this -> func_name = func_decl.ident;
+    func_decl_table.add_func(this -> func_name);
+
+    // 加入返回值
+    func_decl.btype.get() -> accept(*this);
+
+    // 为变量/常量符号表加一层
+    symbol_table_stack.push_table();
+
+    // 记录参数
+    if (func_decl.func_f_param_list)
+        func_decl.func_f_param_list.get() -> accept(*this);
+
+    symbol_table_stack.pop_table();
+    this -> if_func_decl = false;
+}
+
 // FuncFParamList ::= FuncFParam | FuncFParamList "," FuncFParam;
 void Visitor_sema::sema_analysis(FuncFParamListAST& func_f_param_list) {
     for (int i = 0; i < func_f_param_list.func_f_params.size(); i++) {
@@ -1007,12 +1046,20 @@ void Visitor_sema::sema_analysis(FuncFParamAST_1& func_f_param) {
         exit(-1);
     }
 
-    // 将参数加入函数信息表
-    func_def_table.add_param(this->func_name, 0); // 0 维的参数
+    // 函数声明/定义
+    if (this -> if_func_decl) {
+        func_decl_table.add_param(this->func_name, 0);
+        symbol_table_stack.add_var(func_f_param.ident);
+        // 不用为变量名做注释了
+    }
+    else {
+        // 将参数加入函数信息表
+        func_def_table.add_param(this->func_name, 0); // 0 维的参数
 
-    symbol_table_stack.add_var(func_f_param.ident);
-    // 为变量名做注释
-    func_f_param.ident = symbol_table_stack.get_var(func_f_param.ident);
+        symbol_table_stack.add_var(func_f_param.ident);
+        // 为变量名做注释
+        func_f_param.ident = symbol_table_stack.get_var(func_f_param.ident);
+    }
 }
 void Visitor_sema::sema_analysis(FuncFParamAST_2& func_f_param) {
     if (symbol_table_stack.if_exist_last(func_f_param.ident)) {
@@ -1020,28 +1067,49 @@ void Visitor_sema::sema_analysis(FuncFParamAST_2& func_f_param) {
         exit(-1);
     }
 
-    // 加入符号表
-    symbol_table_stack.add_var_array(func_f_param.ident);
+    if (this -> if_func_decl) {
+        // 加入符号表
+        symbol_table_stack.add_var_array(func_f_param.ident);
 
-    // 如果只有 [] ，维度为 1
-    if (!func_f_param.constexplist) {
-        func_def_table.add_param(this->func_name, 1);
-        symbol_table_stack.add_array_dim(func_f_param.ident, 1);
+        // 如果只有 [] ，维度为 1
+        if (!func_f_param.constexplist) {
+            func_decl_table.add_param(this->func_name, 1);
+            symbol_table_stack.add_array_dim(func_f_param.ident, 1);
+        }
+        else {
+            this -> array_name = func_f_param.ident;
+            func_f_param.constexplist.get() -> accept(*this);
+        }
+        // 同样不用为变量名做注释了
     }
     else {
-        this -> array_name = func_f_param.ident;
-        func_f_param.constexplist.get() -> accept(*this);
-    }
+        // 加入符号表
+        symbol_table_stack.add_var_array(func_f_param.ident);
 
-    
-    // 为变量名做注释
-    func_f_param.ident = symbol_table_stack.get_var_array(func_f_param.ident);
+        // 如果只有 [] ，维度为 1
+        if (!func_f_param.constexplist) {
+            func_def_table.add_param(this->func_name, 1);
+            symbol_table_stack.add_array_dim(func_f_param.ident, 1);
+        }
+        else {
+            this -> array_name = func_f_param.ident;
+            func_f_param.constexplist.get() -> accept(*this);
+        }
+
+        // 为变量名做注释
+        func_f_param.ident = symbol_table_stack.get_var_array(func_f_param.ident);
+    }
 }
 
 // ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
 void Visitor_sema::sema_analysis(ConstExpListAST& const_exp_list) {
-    // 将参数维度加入函数定义表
-    func_def_table.add_param(this->func_name, const_exp_list.constexps.size()+1);
+    // 将参数维度加入函数声明/定义表
+    if (this -> if_func_decl) {
+        func_decl_table.add_param(this->func_name, const_exp_list.constexps.size()+1);
+    }
+    else {
+        func_def_table.add_param(this->func_name, const_exp_list.constexps.size()+1);
+    }
     // 将数组变量维度加入符号表
     symbol_table_stack.add_array_dim(this->array_name, const_exp_list.constexps.size()+1);
 
@@ -1083,7 +1151,12 @@ void Visitor_sema::sema_analysis(ConstExpListAST& const_exp_list) {
         const_exp_list.constexps[i] = std::move(const_exp);
 
         // 将参数大小加入
-        func_def_table.add_size(this->func_name, (this->func_param_index).top(), size);
+        if (this -> if_func_decl) {
+            func_decl_table.add_size(this->func_name, (this->func_param_index).top(), size);
+        }
+        else {
+            func_def_table.add_size(this->func_name, (this->func_param_index).top(), size);
+        }
     }
 }
 

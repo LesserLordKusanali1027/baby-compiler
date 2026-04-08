@@ -13,6 +13,7 @@ class CompUnitAST;
 class CompUnitListAST;
 class CompUnitItemAST_1;
 class CompUnitItemAST_2;
+class CompUnitItemAST_3;
 
 class DeclAST_1;
 class DeclAST_2;
@@ -37,6 +38,7 @@ class InitValAST_2;
 class InitValListAST;
 
 class FuncDefAST;
+class FuncDeclAST;
 class FuncFParamListAST;
 class FuncFParamAST_1;
 class FuncFParamAST_2;
@@ -609,7 +611,7 @@ enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRA
 
 // CompUnit      ::= CompUnitList;
 // CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
-// CompUnitItem  ::= FuncDef | Decl;
+// CompUnitItem  ::= FuncDef | Decl | FuncDecl;
 
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
@@ -630,9 +632,10 @@ enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRA
 // InitValList   ::= InitVal | InitValList "," InitVal;
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
+// FuncDecl      ::= BType IDENT "(" [FuncFParamList] ")" ";";
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
 // FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
-// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
+// ConstExpList  ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
@@ -749,6 +752,9 @@ class Visitor_sema {
     // 数组函数相关
     std::stack<int> func_param_index; // 记录参数大小时要用的参数索引
     std::stack<std::string> func_call_stk; // 存放函数名，用来判断调用函数时参数个数、维度、大小是否匹配
+
+    // 是否是函数声明
+    bool if_func_decl = false;
     
   public:
     // 以下函数用来遍历语法树生成符号表
@@ -756,6 +762,7 @@ class Visitor_sema {
     void sema_analysis(CompUnitListAST& comp_unit_list);
     void sema_analysis(CompUnitItemAST_1& comp_unit_item);
     void sema_analysis(CompUnitItemAST_2& comp_unit_item);
+    void sema_analysis(CompUnitItemAST_3& comp_unit_item);
 
     void sema_analysis(DeclAST_1& decl);
     void sema_analysis(DeclAST_2& decl);
@@ -780,6 +787,7 @@ class Visitor_sema {
     void sema_analysis(InitValListAST& init_val_list);
 
     void sema_analysis(FuncDefAST& func_def);
+    void sema_analysis(FuncDeclAST& func_decl);
     void sema_analysis(FuncFParamListAST& func_f_param_list);
     void sema_analysis(FuncFParamAST_1& func_f_param);
     void sema_analysis(FuncFParamAST_2& func_f_param);

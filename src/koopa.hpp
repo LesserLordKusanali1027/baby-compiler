@@ -14,6 +14,7 @@ class CompUnitAST;
 class CompUnitListAST;
 class CompUnitItemAST_1;
 class CompUnitItemAST_2;
+class CompUnitItemAST_3;
 
 class DeclAST_1;
 class DeclAST_2;
@@ -38,6 +39,7 @@ class InitValAST_2;
 class InitValListAST;
 
 class FuncDefAST;
+class FuncDeclAST;
 class FuncFParamListAST;
 class FuncFParamAST_1;
 class FuncFParamAST_2;
@@ -350,17 +352,32 @@ class FunctionDeclIR : public BaseIR {
     std::string function_type; // 先认为有 "void"、"int"
     std::vector<int> param_dims; // 记录各个参数的维度
     std::unordered_map<int, std::vector<int>> param_sizes; // 记录参数各维度的大小
-    std::vector<std::string> param_type; // 先认为有 "int"、"int[]"
+
+    // 先加 param_dims，再加 param_size
+    void add_param_size(int size) {
+        int index = param_dims.size()-1;
+        param_sizes[index].push_back(size);
+    }
 
     void Dump() const override {
         std::cout << "decl " << name << "(";
-        for (int i = 0; i < param_type.size(); i++) {
-            if (param_type[i] == "int")
+        for (int i = 0; i < param_dims.size(); i++) {
+            if (param_dims[i] == 0) {
                 std::cout << "i32";
-            else if (param_type[i] == "int[]")
+            }
+            else if (param_dims[i] == 1) {
                 std::cout << "*i32";
+            }
+            else {
+                std::cout << "*";
+                for (int j = 0; j < param_dims[i]-1; j++)
+                    std::cout << "[";
+                std::cout << "i32";
+                for (int j = param_dims[i]-2; j >= 0; j--)
+                    std::cout << ", " << param_sizes.at(i)[j] << "]";
+            }
             
-            if (i != param_type.size()-1)
+            if (i != param_dims.size()-1)
                 std::cout << ", ";
         }
         std::cout << ")";
@@ -371,13 +388,23 @@ class FunctionDeclIR : public BaseIR {
 
     void Dump_file(std::ofstream& file) override {
         file << "decl " << name << "(";
-        for (int i = 0; i < param_type.size(); i++) {
-            if (param_type[i] == "int")
+        for (int i = 0; i < param_dims.size(); i++) {
+            if (param_dims[i] == 0) {
                 file << "i32";
-            else if (param_type[i] == "int[]")
+            }
+            else if (param_dims[i] == 1) {
                 file << "*i32";
+            }
+            else {
+                file << "*";
+                for (int j = 0; j < param_dims[i]-1; j++)
+                    file << "[";
+                file << "i32";
+                for (int j = param_dims[i]-2; j >= 0; j--)
+                    file << ", " << param_sizes.at(i)[j] << "]";
+            }
             
-            if (i != param_type.size()-1)
+            if (i != param_dims.size()-1)
                 file << ", ";
         }
         file << ")";
@@ -659,7 +686,7 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 
 // CompUnit      ::= CompUnitList;
 // CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
-// CompUnitItem  ::= FuncDef | Decl;
+// CompUnitItem  ::= FuncDef | Decl | FuncDecl;
 
 // Decl          ::= ConstDecl | VarDecl;
 // ConstDecl     ::= "const" BType ConstDefList ";";
@@ -680,9 +707,10 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // InitValList   ::= InitVal | InitValList "," InitVal;
 
 // FuncDef       ::= BType IDENT "(" [FuncFParamList] ")" Block;
+// FuncDecl      ::= BType IDENT "(" [FuncFParamList] ")" ";";
 // FuncFParamList::= FuncFParam | FuncFParamList "," FuncFParam;
 // FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
-// ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
+// ConstExpList  ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
 // Block         ::= "{" BlockItemList "}";
 // BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
@@ -773,6 +801,10 @@ class Visitor_ast {
     std::unordered_map<std::string, int> func_array_params; // 记录函数的数组参数名称
     std::unordered_map<std::string, int> array_dim; // 记录每个数组的维度
     bool if_load; // LValAST_2 是否 load
+
+    // 函数声明相关
+    bool if_func_decl = false;
+    FunctionDeclIR* function_decl;
   
     // 工具函数
     void set_lval(LVal_Mode mode) {
@@ -820,28 +852,29 @@ class Visitor_ast {
         func_decl = new FunctionDeclIR();
         func_decl -> name = "@getarray";
         func_decl -> function_type = "int";
-        func_decl -> param_type = {"int[]"};
+        (func_decl -> param_dims).push_back(1);
         (program -> functions).push_back(func_decl);
         func_table["@getarray"] = "int";
         // void putint(int)
         func_decl = new FunctionDeclIR();
         func_decl -> name = "@putint";
         func_decl -> function_type = "void";
-        func_decl -> param_type = {"int"};
+        (func_decl -> param_dims).push_back(0);
         (program -> functions).push_back(func_decl);
         func_table["@putint"] = "void";
         // void putch(int)
         func_decl = new FunctionDeclIR();
         func_decl -> name = "@putch";
         func_decl -> function_type = "void";
-        func_decl -> param_type = {"int"};
+        (func_decl -> param_dims).push_back(0);
         (program -> functions).push_back(func_decl);
         func_table["@putch"] = "void";
         // void putarray(int, int[])
         func_decl = new FunctionDeclIR();
         func_decl -> name = "@putarray";
         func_decl -> function_type = "void";
-        func_decl -> param_type = {"int", "int[]"};
+        (func_decl -> param_dims).push_back(0);
+        (func_decl -> param_dims).push_back(1);
         (program -> functions).push_back(func_decl);
         func_table["@putarray"] = "void";
         // void starttime()
@@ -864,6 +897,7 @@ class Visitor_ast {
     void ir_init(CompUnitListAST& comp_unit_list);
     void ir_init(CompUnitItemAST_1& comp_unit_item);
     void ir_init(CompUnitItemAST_2& comp_unit_item);
+    void ir_init(CompUnitItemAST_3& comp_unit_item);
 
     void ir_init(DeclAST_1& decl);
     void ir_init(DeclAST_2& decl);
@@ -888,6 +922,7 @@ class Visitor_ast {
     void ir_init(InitValListAST& init_val_list);
 
     void ir_init(FuncDefAST& func_def);
+    void ir_init(FuncDeclAST& func_decl);
     void ir_init(FuncFParamListAST& func_f_param_list);
     void ir_init(FuncFParamAST_1& func_f_param);
     void ir_init(FuncFParamAST_2& func_f_param);

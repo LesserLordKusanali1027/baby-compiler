@@ -21,7 +21,7 @@ void Visitor_ast::ir_init(CompUnitListAST& comp_unit_list) {
     }
 }
 
-// CompUnitItem  ::= FuncDef | Decl;
+// CompUnitItem  ::= FuncDef | Decl | FuncDecl;
 void Visitor_ast::ir_init(CompUnitItemAST_1& comp_unit_item) {
     // 定义新的函数 IR
     this -> function = new FunctionIR();
@@ -34,6 +34,14 @@ void Visitor_ast::ir_init(CompUnitItemAST_2& comp_unit_item) {
     this -> global_decl = true;
     comp_unit_item.decl.get() -> accept(*this);
     this -> global_decl = false;
+}
+void Visitor_ast::ir_init(CompUnitItemAST_3& comp_unit_item) {
+    // 函数 Decl IR
+    this -> function_decl = new FunctionDeclIR();
+    // 开始
+    comp_unit_item.funcdecl.get() -> accept(*this);
+    // 将 Decl IR 放入
+    (this -> program -> functions).push_back(this -> function_decl);
 }
 
 // Decl          ::= ConstDecl | VarDecl;
@@ -54,6 +62,9 @@ void Visitor_ast::ir_init(BTypeAST& btype) {
     // int 或 void，在 BType 做 FuncType 时需要交出自己的值
     if (this -> if_func_def) {
         this -> function -> function_type = btype.btype;
+    }
+    else if (this -> if_func_decl) {
+        this -> function_decl -> function_type = btype.btype;
     }
 }
 
@@ -508,6 +519,24 @@ void Visitor_ast::ir_init(FuncDefAST& func_def) {
     return;
 }
 
+// FuncDecl      ::= BType IDENT "(" [FuncFParamList] ")" ";";
+void Visitor_ast::ir_init(FuncDeclAST& func_decl) {
+    this -> if_func_decl = true;
+    
+    // 返回值类型
+    func_decl.btype.get() -> accept(*this);
+    // 函数名
+    this -> function_decl -> name = "@" + func_decl.ident;
+    // 把函数名和返回值类型记录到 func_table 中
+    (this -> func_table)[this -> function_decl -> name] = this -> function_decl -> function_type;
+
+    // 参数
+    if (func_decl.func_f_param_list)
+        func_decl.func_f_param_list.get() -> accept(*this);
+
+    this -> if_func_decl = false;
+}
+
 void Visitor_ast::ir_init(FuncFParamListAST& func_f_param_list) {
     for (int i = 0; i < func_f_param_list.func_f_params.size(); i++)
         func_f_param_list.func_f_params[i].get() -> accept(*this);
@@ -515,6 +544,11 @@ void Visitor_ast::ir_init(FuncFParamListAST& func_f_param_list) {
 
 // FuncFParam    ::= BType IDENT | BType IDENT "[" "]" [ConstExpList];
 void Visitor_ast::ir_init(FuncFParamAST_1& func_f_param) {
+    if (if_func_decl) {
+        (this -> function_decl -> param_dims).push_back(0);
+        return;
+    }
+
     (this -> function -> parameters).push_back("%" + func_f_param.ident);
     (this -> function -> param_dims).push_back(0);
 
@@ -532,6 +566,16 @@ void Visitor_ast::ir_init(FuncFParamAST_1& func_f_param) {
     (this -> basic_block -> values).push_back(value2);
 }
 void Visitor_ast::ir_init(FuncFParamAST_2& func_f_param) {
+    if (this -> if_func_decl) {
+        if (func_f_param.constexplist) {
+            func_f_param.constexplist.get() -> accept(*this);
+        }
+        else {
+            (this -> function_decl -> param_dims).push_back(1);
+        }
+        return;
+    }
+
     (this -> function -> parameters).push_back("%" + func_f_param.ident);
     // 记录下来，用于之后决定是 getelemptr 还是 getptr
     func_array_params[func_f_param.ident] = 1;
@@ -564,6 +608,22 @@ void Visitor_ast::ir_init(FuncFParamAST_2& func_f_param) {
 
 // ConstExpList ::= "[" ConstExp "]" | ConstExpList "[" ConstExp "]";
 void Visitor_ast::ir_init(ConstExpListAST& const_exp_list) {
+    if (if_func_decl) {
+        (this -> function_decl -> param_dims).push_back(const_exp_list.constexps.size()+1);
+
+        set_lval(LOAD);
+        for (int i = 0; i < const_exp_list.constexps.size(); i++) {
+            const_exp_list.constexps[i].get() -> accept(*this);
+            // 此时返回值在栈顶
+            int size = std::stoi((this->exp_stk).top());
+            (this->exp_stk).pop();
+            this -> function_decl -> add_param_size(size);
+        }
+        recover_lval();
+
+        return;
+    }
+
     (this -> function -> param_dims).push_back(const_exp_list.constexps.size()+1);
 
     set_lval(LOAD);

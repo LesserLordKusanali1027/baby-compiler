@@ -73,6 +73,7 @@ using namespace std;
 %type <initvallist_val> InitValList
 %type <explist_val> ExpList
 %type <constexplist_val> ConstExpList
+%type <ast_val> FuncDecl
 
 %%
 
@@ -103,7 +104,7 @@ CompUnitList
   }
   ;
 
-// CompUnitItem  ::= FuncDef | Decl;
+// CompUnitItem  ::= FuncDef | Decl | FuncDecl;
 CompUnitItem
   : FuncDef {
     auto ast = new CompUnitItemAST_1();
@@ -113,6 +114,11 @@ CompUnitItem
   | Decl {
     auto ast = new CompUnitItemAST_2();
     ast -> decl = unique_ptr<BaseAST>($1);
+    $$ = ast;
+  }
+  | FuncDecl {
+    auto ast = new CompUnitItemAST_3();
+    ast -> funcdecl = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
   ;
@@ -353,6 +359,24 @@ FuncDef
     ast -> ident = *unique_ptr<string>($2);
     ast -> func_f_param_list = unique_ptr<BaseAST>($4);
     ast -> block = unique_ptr<BaseAST>($6);
+    $$ = ast;
+  }
+  ;
+
+// FuncDecl      ::= BType IDENT "(" [FuncFParamList] ")" ";";
+FuncDecl
+  : BType IDENT '(' ')' ';' {
+    auto ast = new FuncDeclAST();
+    ast -> btype = unique_ptr<BaseAST>($1);
+    ast -> ident = *unique_ptr<string>($2);
+    ast -> func_f_param_list = unique_ptr<BaseAST>(nullptr);
+    $$ = ast;
+  }
+  | BType IDENT '(' FuncFParamList ')' ';' {
+    auto ast = new FuncDeclAST();
+    ast -> btype = unique_ptr<BaseAST>($1);
+    ast -> ident = *unique_ptr<string>($2);
+    ast -> func_f_param_list = unique_ptr<BaseAST>($4);
     $$ = ast;
   }
   ;

@@ -68,7 +68,7 @@ class CompUnitListAST : public BaseAST {
     }
 };
 
-// CompUnitItem  ::= FuncDef | Decl;
+// CompUnitItem  ::= FuncDef | Decl | FuncDecl;
 class CompUnitItemAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> func_def;
@@ -94,6 +94,24 @@ class CompUnitItemAST_2 : public BaseAST {
     void Dump() const override {
         std::cout << "CompUnitItemAST { ";
         decl -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class CompUnitItemAST_3 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> funcdecl;
+
+    void Dump() const override {
+        std::cout << "CompUnitItemAST { ";
+        funcdecl -> Dump();
         std::cout << " }";
     }
 
@@ -609,6 +627,35 @@ class FuncDefAST : public BaseAST {
         }
         std::cout << ", ";
         block -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+
+// FuncDecl       ::= BType IDENT "(" [FuncFParamList] ")" ";";
+class FuncDeclAST : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> btype;
+    std::string ident;
+    std::unique_ptr<BaseAST> func_f_param_list; // 可能为空
+
+    void Dump() const override {
+        std::cout << "FuncDeclAST { ";
+        btype -> Dump();
+        std::cout << ", " << ident << ", ";
+        if (func_f_param_list) {
+            func_f_param_list -> Dump();
+        }
+        else {
+            std::cout << "NULL";
+        }
         std::cout << " }";
     }
 
