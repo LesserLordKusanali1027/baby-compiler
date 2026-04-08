@@ -1,12 +1,10 @@
-int func1(int a, int b[], int c[][2], int d[][2][3]);
+const int b[100][200] = {};
+int a[20][30] = {};
+int c[30][10][4];
 
 int main() {
-    int b[2];
-    int c[2];
-    int d[2][2][3];
-    return func1(1, b, c, d);
-}
-
-int func1(int a, int b[], int c[][2], int d[][2][3]) {
-    return 0;
+    const int b[2][2] = {};
+    int a[2][3] = {};
+    int c[3][4];
+    return 1;
 }

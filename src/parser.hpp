@@ -896,8 +896,14 @@ class StmtAST_2 : public BaseAST {
     }
 };
 
-// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | 
-// "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt | "break" ";" | "continue" ";";
+// MatchedStmt ::= LVal "=" Exp ";" 
+//               | "return" [Exp] ";"
+//               | [Exp] ";" 
+//               | Block 
+//               | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt 
+//               | "while" "(" Exp ")" MatchedStmt 
+//               | "break" ";"
+//               | "continue" ";";
 class MatchedStmtAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> lval;
@@ -1006,13 +1012,13 @@ class MatchedStmtAST_5 : public BaseAST {
 class MatchedStmtAST_6 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
-    std::unique_ptr<BaseAST> stmt;
+    std::unique_ptr<BaseAST> matchedstmt;
 
     void Dump() const override {
         std::cout << "MatchedStmtAST { while, ";
         exp -> Dump();
         std::cout << ", ";
-        stmt -> Dump();
+        matchedstmt -> Dump();
         std::cout << " }";
     }
 
@@ -1053,7 +1059,7 @@ class MatchedStmtAST_8 : public BaseAST {  // continue
     }
 };
 
-// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt | "while" "(" Exp ")" UnmatchedStmt;
 class UnmatchedStmtAST_1 : public BaseAST {
   public:
     std::unique_ptr<BaseAST> exp;
@@ -1087,6 +1093,27 @@ class UnmatchedStmtAST_2 : public BaseAST {
         std::cout << ", ";
         matchedstmt -> Dump();
         std::cout << ", else, ";
+        unmatchedstmt -> Dump();
+        std::cout << " }";
+    }
+
+    void accept(Visitor_ast& visitor) override {
+        visitor.ir_init(*this);
+    }
+
+    void accept(Visitor_sema& visitor) override {
+        visitor.sema_analysis(*this);
+    }
+};
+class UnmatchedStmtAST_3 : public BaseAST {
+  public:
+    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseAST> unmatchedstmt;
+
+    void Dump() const override {
+        std::cout << "UnmatchedStmtAST { while, ";
+        exp -> Dump();
+        std::cout << ", ";
         unmatchedstmt -> Dump();
         std::cout << " }";
     }

@@ -60,6 +60,7 @@ class MatchedStmtAST_7;
 class MatchedStmtAST_8;
 class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
+class UnmatchedStmtAST_3;
 class ExpAST;
 class LValAST_1;
 class LValAST_2;
@@ -220,8 +221,13 @@ class GlobalIR_2 : public BaseIR {
             std::cout << ", " << size[i] << "]";
         }
         std::cout << ", ";
-        int val_idx = 0; // 遍历init_val的索引
-        Dump_init(0, val_idx); // 递归输出
+        if (init_val.size() != 0) {
+            int val_idx = 0; // 遍历init_val的索引
+            Dump_init(0, val_idx); // 递归输出
+        }
+        else {
+            std::cout << "zeroinit";
+        }
         
         std::cout << "\n";
     }
@@ -237,8 +243,13 @@ class GlobalIR_2 : public BaseIR {
             file << ", " << size[i] << "]";
         }
         file << ", ";
-        int val_idx = 0; // 遍历init_val的索引
-        Dump_init_file(file, 0, val_idx); // 递归输出
+        if (init_val.size() != 0) {
+            int val_idx = 0; // 遍历init_val的索引
+            Dump_init_file(file, 0, val_idx); // 递归输出
+        }
+        else {
+            file << "zeroinit";
+        }
         
         file << "\n";
     }
@@ -715,8 +726,17 @@ enum LVal_Mode { START = 0, LOAD, STORE };
 // BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
-// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+// MatchedStmt   ::= LVal "=" Exp ";" 
+//                 | "return" [Exp] ";" 
+//                 | [Exp] ";" 
+//                 | Block 
+//                 | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt 
+//                 | "while" "(" Exp ")" MatchedStmt;
+//                 | "break" ";"
+//                 | "continue" ";";
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt 
+//                 | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt
+//                 | "while" "(" Exp ")" UnmatchedStmt;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT | IDENT ExpList;
 // ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
@@ -943,6 +963,7 @@ class Visitor_ast {
     void ir_init(MatchedStmtAST_8& matched_stmt);
     void ir_init(UnmatchedStmtAST_1& unmatched_stmt);
     void ir_init(UnmatchedStmtAST_2& unmatched_stmt);
+    void ir_init(UnmatchedStmtAST_3& unmatched_stmt);
     void ir_init(ExpAST& exp);
     void ir_init(LValAST_1& lval);
     void ir_init(LValAST_2& lval);

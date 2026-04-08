@@ -584,10 +584,15 @@ void Visitor_sema::sema_analysis(ConstDefAST_2& const_def) {
     const_def.constsizelist.get() -> accept(*this);
     // 准备
     const_init_val_std -> Init_Build();
-    // 前往初始化
-    const_def.constinitval.get() -> accept(*this);
-    // 导出并替换 constinitval
-    const_def.constinitval = std::unique_ptr<BaseAST>(const_init_val_std -> Get_AST());
+    
+    // 只有 { } 内或者为局部，才初始化
+    ConstInitValAST_2* tmp_ptr = dynamic_cast<ConstInitValAST_2*>(const_def.constinitval.get());
+    if (tmp_ptr -> constinitvallist || !global_decl) {
+        // 前往初始化
+        const_def.constinitval.get() -> accept(*this);
+        // 导出并替换 constinitval
+        const_def.constinitval = std::unique_ptr<BaseAST>(const_init_val_std -> Get_AST());
+    }
     // delete const_init_val_std; 先别这么干了，我怕把 AST 给删了
 }
 
@@ -811,10 +816,14 @@ void Visitor_sema::sema_analysis(VarDefAST_4& var_def) {
     var_def.varsizelist.get() -> accept(*this);
     // 准备
     init_val_std -> Init_Build();
-    // 前往初始化
-    var_def.initval.get() -> accept(*this);
-    // 导出并替换 constinitval
-    var_def.initval = std::unique_ptr<BaseAST>(init_val_std -> Get_AST());
+    // 当 { } 不为空或者为局部时才初始化
+    InitValAST_2* tmp_ptr = dynamic_cast<InitValAST_2*>(var_def.initval.get());
+    if (tmp_ptr -> initvallist || !global_decl) {
+        // 前往初始化
+        var_def.initval.get() -> accept(*this);
+        // 导出并替换 constinitval
+        var_def.initval = std::unique_ptr<BaseAST>(init_val_std -> Get_AST());
+    }
 }
 
 // VarSizeList   ::= "[" ConstExp "]" | VarSizeList "[" ConstExp "]";
@@ -1191,7 +1200,14 @@ void Visitor_sema::sema_analysis(StmtAST_2& stmt) {
     stmt.unmatchedstmt.get() -> accept(*this);
 }
 
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
+// MatchedStmt   ::= LVal "=" Exp ";" 
+//                 | "return" [Exp] ";" 
+//                 | [Exp] ";" 
+//                 | Block 
+//                 | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt 
+//                 | "while" "(" Exp ")" MatchedStmt;
+//                 | "break" ";"
+//                 | "continue" ";";
 // 复制了之前 Stmt 的四个函数
 void Visitor_sema::sema_analysis(MatchedStmtAST_1& matched_stmt) {
     add_error_mode(CONST_CARRAY_ARRAY_UNDF);
@@ -1242,7 +1258,7 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_6& matched_stmt) {
 
     // 为了确保 break 和 continue 位于 while 中，否则语义错误
     this->while_levels++;
-    matched_stmt.stmt.get() -> accept(*this);
+    matched_stmt.matchedstmt.get() -> accept(*this);
     this->while_levels--;
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_7& matched_stmt) { // break
@@ -1258,7 +1274,7 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_8& matched_stmt) { // continue
     }
 }
 
-// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt | "while" "(" Exp ")" UnmatchedStmt;
 void Visitor_sema::sema_analysis(UnmatchedStmtAST_1& unmatched_stmt) {
     add_error_mode(CARRAY_ARRAY_UNDF);
     unmatched_stmt.exp.get() -> accept(*this);
@@ -1273,6 +1289,16 @@ void Visitor_sema::sema_analysis(UnmatchedStmtAST_2& unmatched_stmt) {
 
     unmatched_stmt.matchedstmt.get() -> accept(*this);
     unmatched_stmt.unmatchedstmt.get() -> accept(*this);
+}
+void Visitor_sema::sema_analysis(UnmatchedStmtAST_3& unmatched_stmt) {
+    add_error_mode(CARRAY_ARRAY_UNDF);
+    unmatched_stmt.exp.get() -> accept(*this);
+    recover_error_mode();
+
+    // 为了确保 break 和 continue 位于 while 中，否则语义错误
+    this->while_levels++;
+    unmatched_stmt.unmatchedstmt.get() -> accept(*this);
+    this->while_levels--;
 }
 
 // Exp           ::= LOrExp;

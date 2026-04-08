@@ -480,7 +480,7 @@ Stmt
   }
   ;
 
-// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt | "break" ";" | "continue" ";";
+// MatchedStmt ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" MatchedStmt | "break" ";" | "continue" ";";
 MatchedStmt
   : LVal '=' Exp ';' {
     auto ast = new MatchedStmtAST_1();
@@ -520,10 +520,10 @@ MatchedStmt
     ast -> matchedstmt2 = unique_ptr<BaseAST>($7);
     $$ = ast;
   }
-  | WHILE '(' Exp ')' Stmt {
+  | WHILE '(' Exp ')' MatchedStmt {
     auto ast = new MatchedStmtAST_6();
     ast -> exp = unique_ptr<BaseAST>($3);
-    ast -> stmt = unique_ptr<BaseAST>($5);
+    ast -> matchedstmt = unique_ptr<BaseAST>($5);
     $$ = ast;
   }
   | BREAK ';' {
@@ -536,7 +536,7 @@ MatchedStmt
   }
   ;
 
-// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt | "while" "(" Exp ")" UnmatchedStmt;
 UnmatchedStmt
   : IF '(' Exp ')' Stmt {
     auto ast = new UnmatchedStmtAST_1();
@@ -549,6 +549,12 @@ UnmatchedStmt
     ast -> exp = unique_ptr<BaseAST>($3);
     ast -> matchedstmt = unique_ptr<BaseAST>($5);
     ast -> unmatchedstmt = unique_ptr<BaseAST>($7);
+    $$ = ast;
+  }
+  | WHILE '(' Exp ')' UnmatchedStmt {
+    auto ast = new UnmatchedStmtAST_3();
+    ast -> exp = unique_ptr<BaseAST>($3);
+    ast -> unmatchedstmt = unique_ptr<BaseAST>($5);
     $$ = ast;
   }
   ;

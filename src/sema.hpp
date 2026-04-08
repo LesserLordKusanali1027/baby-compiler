@@ -59,6 +59,7 @@ class MatchedStmtAST_7;
 class MatchedStmtAST_8;
 class UnmatchedStmtAST_1;
 class UnmatchedStmtAST_2;
+class UnmatchedStmtAST_3;
 class ExpAST;
 class LValAST_1;
 class LValAST_2;
@@ -640,8 +641,17 @@ enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRA
 // BlockItemList ::= %empty | BlockItemList BlockItem;
 // BlockItem     ::= Decl | Stmt;
 // Stmt          ::= MatchedStmt | UnmatchedStmt
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt | "while" "(" Exp ")" Stmt;
-// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+// MatchedStmt   ::= LVal "=" Exp ";" 
+//                 | "return" [Exp] ";" 
+//                 | [Exp] ";" 
+//                 | Block 
+//                 | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt 
+//                 | "while" "(" Exp ")" MatchedStmt;
+//                 | "break" ";"
+//                 | "continue" ";";
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt 
+//                 | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt
+//                 | "while" "(" Exp ")" UnmatchedStmt;
 // Exp           ::= LOrExp;
 // LVal          ::= IDENT | IDENT ExpList;
 // ExpList       ::= "[" Exp "]" | ExpList "[" Exp "]";
@@ -808,6 +818,7 @@ class Visitor_sema {
     void sema_analysis(MatchedStmtAST_8& matched_stmt);
     void sema_analysis(UnmatchedStmtAST_1& unmatched_stmt);
     void sema_analysis(UnmatchedStmtAST_2& unmatched_stmt);
+    void sema_analysis(UnmatchedStmtAST_3& unmatched_stmt);
     void sema_analysis(ExpAST& exp);
     void sema_analysis(LValAST_1& lval);
     void sema_analysis(LValAST_2& lval);

@@ -174,8 +174,16 @@ void Visitor_ir::riscv_get(GlobalIR_2& global) {
     file << "  .data\n";
     file << "  .globl " << global.name.substr(1) << '\n';
     file << global.name.substr(1) << ":\n";
-    for (int i = 0; i < global.init_val.size(); i++)
-        file << "  .word " << global.init_val[i] << '\n';
+    if (global.init_val.size() != 0) {
+        for (int i = 0; i < global.init_val.size(); i++)
+            file << "  .word " << global.init_val[i] << '\n';
+    }
+    else {
+        int sum = 4;
+        for (int i = 0; i < global.size.size(); i++)
+            sum *= global.size[i];
+        file << "  .zero " << sum << '\n';
+    }
 
     file << '\n';
     // 记录到全局变量表中，供 store 和 load 使用

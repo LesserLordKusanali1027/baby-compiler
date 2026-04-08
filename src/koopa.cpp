@@ -157,8 +157,9 @@ void Visitor_ast::ir_init(ConstInitValAST_1& const_init_val) {
 }
 void Visitor_ast::ir_init(ConstInitValAST_2& const_init_val) {
     if (this -> global_decl) {
-        // 经过语义分析，肯定不会出现为空的情况
-        const_init_val.constinitvallist.get() -> accept(*this);
+        // 不为空时才进入
+        if (const_init_val.constinitvallist)
+            const_init_val.constinitvallist.get() -> accept(*this);
     }
     else {
         // 也不会出现为空的情况，但是要手动赋值了
@@ -299,15 +300,15 @@ void Visitor_ast::ir_init(VarDefAST_3& var_def) {
         // 获得数组大小信息
         var_def.varsizelist.get() -> accept(*this);
 
-        // 手动初始化为 0
-        int sum = 1;
-        for (int i = 0; i < (global_array->size).size(); i++) {
-            sum *= (global_array->size)[i];
-        }
-        std::string init_val = "0";
-        for (int i = 0; i < sum; i++) {
-            (global_array -> init_val).push_back(init_val);
-        }
+        // 手动初始化为 0，现在不需要了
+        // int sum = 1;
+        // for (int i = 0; i < (global_array->size).size(); i++) {
+        //     sum *= (global_array->size)[i];
+        // }
+        // std::string init_val = "0";
+        // for (int i = 0; i < sum; i++) {
+        //     (global_array -> init_val).push_back(init_val);
+        // }
 
         // 放入
         (this -> program -> globals).push_back(this -> global_array);
@@ -408,8 +409,9 @@ void Visitor_ast::ir_init(InitValAST_1& init_val) {
 }
 void Visitor_ast::ir_init(InitValAST_2& init_val) {
     if (this -> global_decl) {
-        // 不存在为空的情况
-        init_val.initvallist.get() -> accept(*this);
+        // 不为空时才进入
+        if (init_val.initvallist)
+            init_val.initvallist.get() -> accept(*this);
     }
     else {
         // 也不存在为空的情况
@@ -665,7 +667,14 @@ void Visitor_ast::ir_init(StmtAST_2& stmt) {
     stmt.unmatchedstmt.get() -> accept(*this);
 }
 
-// MatchedStmt   ::= LVal "=" Exp ";" | "return" [Exp] ";" | [Exp] ";" | Block | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt;
+// MatchedStmt   ::= LVal "=" Exp ";" 
+//                 | "return" [Exp] ";" 
+//                 | [Exp] ";" 
+//                 | Block 
+//                 | "if" "(" Exp ")" MatchedStmt "else" MatchedStmt 
+//                 | "while" "(" Exp ")" MatchedStmt;
+//                 | "break" ";"
+//                 | "continue" ";";
 void Visitor_ast::ir_init(MatchedStmtAST_1& matched_stmt) {
     set_lval(LOAD);
     matched_stmt.exp.get() -> accept(*this);
@@ -797,8 +806,8 @@ void Visitor_ast::ir_init(MatchedStmtAST_6& matched_stmt) {
     // while_body 块
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = body_block;
-    // stmt
-    matched_stmt.stmt.get() -> accept(*this);
+    // matchedstmt
+    matched_stmt.matchedstmt.get() -> accept(*this);
     // jump 到 while_entry
     ValueIR_1* value3 = new ValueIR_1();
     value3 -> opcode = "jump";
@@ -851,7 +860,9 @@ void Visitor_ast::ir_init(MatchedStmtAST_8& matched_stmt) { // continue
     return;
 }
 
-// UnmatchedStmt ::= "if" "(" Exp ")" Stmt | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt;
+// UnmatchedStmt ::= "if" "(" Exp ")" Stmt 
+//                 | "if" "(" Exp ")" MatchedStmt "else" UnmatchedStmt
+//                 | "while" "(" Exp ")" UnmatchedStmt;
 void Visitor_ast::ir_init(UnmatchedStmtAST_1& unmatched_stmt) {
     set_lval(LOAD);
     unmatched_stmt.exp.get() -> accept(*this);
@@ -930,6 +941,62 @@ void Visitor_ast::ir_init(UnmatchedStmtAST_2& unmatched_stmt) {
     (function -> basic_blocks).push_back(this -> basic_block);
     this -> basic_block = new BasicBlockIR();
     this -> basic_block -> name = end_block;
+}
+void Visitor_ast::ir_init(UnmatchedStmtAST_3& unmatched_stmt) {
+    // 准备基本块
+    std::string entry_block = "%while_entry_" + std::to_string(this->while_num);
+    std::string body_block = "%while_body_" + std::to_string(this->while_num);
+    std::string end_block = "%while_end_" + std::to_string(this->while_num);
+    (this->while_stk).push(this->while_num); // 记录下各层 while 的标签编号
+    this->while_num++;
+    
+    // 当前块最后的指令：jump 到 while_entry
+    ValueIR_1* value1 = new ValueIR_1();
+    value1 -> opcode = "jump";
+    value1 -> operand = entry_block;
+    (this -> basic_block -> values).push_back(value1);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // while_entry 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = entry_block;
+    // exp，返回后结果放在了栈顶
+    set_lval(LOAD);
+    unmatched_stmt.exp.get() -> accept(*this);
+    recover_lval();
+    // br 指令
+    ValueIR_5* value2 = new ValueIR_5();
+    value2 -> opcode = "br";
+    value2 -> operand1 = (this->exp_stk).top();
+    (this->exp_stk).pop();
+    value2 -> operand2 = body_block;
+    value2 -> operand3 = end_block;
+    (this -> basic_block -> values).push_back(value2);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // while_body 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = body_block;
+    // unmatchedstmt
+    unmatched_stmt.unmatchedstmt.get() -> accept(*this);
+    // jump 到 while_entry
+    ValueIR_1* value3 = new ValueIR_1();
+    value3 -> opcode = "jump";
+    value3 -> operand = entry_block;
+    (this -> basic_block -> values).push_back(value3);
+    // 结束当前块
+    (this -> function -> basic_blocks).push_back(this -> basic_block);
+
+    // while_end 块
+    this -> basic_block = new BasicBlockIR();
+    this -> basic_block -> name = end_block;
+
+    // pop 掉当前 while 的标签编号
+    (this->while_stk).pop();
+
+    return;
 }
 
 void Visitor_ast::ir_init(ExpAST& exp) {
