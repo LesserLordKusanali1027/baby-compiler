@@ -10,6 +10,7 @@
 # include "sema.hpp"
 # include "koopa.hpp"
 # include "riscv.hpp"
+# include "optimizer/optimizer.hpp"
 
 using namespace std;
 
@@ -51,6 +52,9 @@ int main(int argc, const char *argv[]) {
 
     Visitor_ast visitor_ast;
     fd -> accept(visitor_ast);
+
+    Optimizer optimizer;
+    visitor_ast.program -> accept(optimizer);
 
     if (strcmp(mode, "-koopa") == 0) { // 输出 Koopa IR 代码
         ofstream out_file(output);

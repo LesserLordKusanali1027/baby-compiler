@@ -6,6 +6,7 @@
 # include <fstream>
 # include <stack>
 # include <unordered_map>
+# include "optimizer/optimizer.hpp"
 # include "riscv.hpp"
 
 class BaseAST;
@@ -131,6 +132,10 @@ class ProgramIR : public BaseIR {
 
     void accept(Visitor_ir& visitor) override {
         visitor.riscv_get(*this);
+    }
+
+    void accept(Optimizer& visitor) {
+        visitor.optimizer(*this);
     }
 };
 
@@ -433,6 +438,13 @@ class BasicBlockIR : public BaseIR {
   public:
     std::string name;
     std::vector<BaseIR*> values;
+
+    ~BasicBlockIR() override {
+        for (int i = 0; i < values.size(); i++) {
+            delete values[i];
+        }
+        values.clear();
+    }
 
     void Dump() const override {
         std::cout << name << ":\n";
