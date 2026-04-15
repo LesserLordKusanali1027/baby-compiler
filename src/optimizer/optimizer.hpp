@@ -17,9 +17,16 @@ class ValueIR_7;
 class ValueIR_8;
 class ValueIR_9;
 
+class DataFlowGraph;
+
 class Optimizer {
+  private:
+    DataFlowGraph* data_flow_graph = NULL;
   public:
-    void optimizer(ProgramIR& program_ir);
+    ~Optimizer();
+
+    void build_DFG(FunctionIR* function_ir);
+    void optimizer(ProgramIR& program_ir); // 由这个函数来充当对外的接口，同时构建数据流图并调用一系列优化
 };
 
 # endif

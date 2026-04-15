@@ -1,5 +1,5 @@
-# ifndef DEAD_BLOCK_ELIM
-# define DEAD_BLOCK_ELIM
+# ifndef DEAD_CODE_ELIM
+# define DEAD_CODE_ELIM
 
 class ProgramIR;
 class GlobalIR_1;
@@ -19,6 +19,6 @@ class ValueIR_9;
 
 class DataFlowGraph;
 
-void dead_block_elimination(FunctionIR* function_ir, DataFlowGraph* data_flow_graph);
+void dead_code_elimination(FunctionIR* function_ir, DataFlowGraph* data_flow_graph);
 
 # endif
