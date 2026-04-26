@@ -608,7 +608,13 @@ class ConstInitVal_Std;
 class InitVal_Std;
 
 // 定义枚举类型，用于设定错误检查模式
-enum ErrorMode { NONE = 0, VAR_CARRAY_ARRAY_UNDF, CONST_CARRAY_ARRAY_UNDF, CARRAY_ARRAY_UNDF, PARAM_UNDF };
+enum ErrorMode {
+    NONE = 0,
+    VAR_CARRAY_ARRAY_UNDF,
+    CONST_CARRAY_ARRAY_UNDF,
+    CARRAY_ARRAY_UNDF,
+    PARAM_UNDF
+};
 
 // CompUnit      ::= CompUnitList;
 // CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;

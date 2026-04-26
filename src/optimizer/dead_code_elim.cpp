@@ -134,7 +134,7 @@ void DeadCodeElim::build_info() {
                     }
                     if ((value_ir -> operand2)[0] == '%') {
                         useful_symbol.insert(value_ir -> operand2);
-                        std::cout << "Useful symbol: " << value_ir -> operand2 << '\n';
+                        // std::cout << "Useful symbol: " << value_ir -> operand2 << '\n';
                     }
                 }
             }
@@ -349,50 +349,50 @@ void DeadCodeElim::data_flow_alg() {
 void DeadCodeElim::code_elim() {
     // 记录会产生影响的符号
     std::unordered_set<std::string> useful_symbol;
-    // 输出 def
-    std::cout << "def: \n";
-    for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
-        std::cout << i << ". ";
-        for (const auto& elem : block_info[i].def) {
-            std::cout << elem << ' ';
-        }
-        if (block_info[i].def.size() == 0)
-            std::cout << "empty";
-        std::cout << '\n';
-    }
-    // 输出 use
-    std::cout << "use: \n";
-    for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
-        std::cout << i << ". ";
-        for (const auto& elem : block_info[i].use) {
-            std::cout << elem << ' ';
-        }
-        if (block_info[i].use.size() == 0)
-            std::cout << "empty";
-        std::cout << '\n';
-    }
-    // 输出 IN
-    std::cout << "IN: \n";
-    for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
-        std::cout << i << ". ";
-        for (const auto& elem : block_info[i].IN) {
-            std::cout << elem << ' ';
-        }
-        if (block_info[i].IN.size() == 0)
-            std::cout << "empty";
-        std::cout << '\n';
-    }
-    // 输出 OUT
-    std::cout << "OUT: \n";
-    for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
-        std::cout << i << ". ";
-        for (const auto& elem : block_info[i].OUT) {
-            std::cout << elem << ' ';
-        }
-        if (block_info[i].OUT.size() == 0)
-            std::cout << "empty";
-        std::cout << '\n';
-    }
+    // // 输出 def
+    // std::cout << "def: \n";
+    // for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
+    //     std::cout << i << ". ";
+    //     for (const auto& elem : block_info[i].def) {
+    //         std::cout << elem << ' ';
+    //     }
+    //     if (block_info[i].def.size() == 0)
+    //         std::cout << "empty";
+    //     std::cout << '\n';
+    // }
+    // // 输出 use
+    // std::cout << "use: \n";
+    // for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
+    //     std::cout << i << ". ";
+    //     for (const auto& elem : block_info[i].use) {
+    //         std::cout << elem << ' ';
+    //     }
+    //     if (block_info[i].use.size() == 0)
+    //         std::cout << "empty";
+    //     std::cout << '\n';
+    // }
+    // // 输出 IN
+    // std::cout << "IN: \n";
+    // for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
+    //     std::cout << i << ". ";
+    //     for (const auto& elem : block_info[i].IN) {
+    //         std::cout << elem << ' ';
+    //     }
+    //     if (block_info[i].IN.size() == 0)
+    //         std::cout << "empty";
+    //     std::cout << '\n';
+    // }
+    // // 输出 OUT
+    // std::cout << "OUT: \n";
+    // for (int i = 0; i < (function_ir -> basic_blocks).size(); i++) {
+    //     std::cout << i << ". ";
+    //     for (const auto& elem : block_info[i].OUT) {
+    //         std::cout << elem << ' ';
+    //     }
+    //     if (block_info[i].OUT.size() == 0)
+    //         std::cout << "empty";
+    //     std::cout << '\n';
+    // }
 
     // 记录需要 alloc 的变量，为所有 use 的并，即所有被用来产生影响的变量
     std::unordered_set<std::string> var_array_alloc;

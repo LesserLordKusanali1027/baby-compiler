@@ -1269,7 +1269,7 @@ void Visitor_sema::sema_analysis(MatchedStmtAST_7& matched_stmt) { // break
 }
 void Visitor_sema::sema_analysis(MatchedStmtAST_8& matched_stmt) { // continue
     if (this->while_levels <= 0) {
-        std::cout << "Semantic analysis continue: 'break' must be used in the while loop here.\n";
+        std::cout << "Semantic analysis failed: 'continue' must be used in the while loop here.\n";
         exit(-1);
     }
 }

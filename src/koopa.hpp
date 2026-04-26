@@ -705,7 +705,11 @@ class ValueIR_9 : public BaseIR {
     }
 };
 
-enum LVal_Mode { START = 0, LOAD, STORE };
+enum LVal_Mode { 
+    START = 0,
+    LOAD,
+    STORE 
+};
 
 // CompUnit      ::= CompUnitList;
 // CompUnitList  ::= CompUnitItem | CompUnitList CompUnitItem;
